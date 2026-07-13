@@ -1,4 +1,4 @@
-package com.example.smart_door_security_server.controller;
+package com.example.smart_door_security_server;
 
 import com.example.smart_door_security_server.domain.User;
 import com.example.smart_door_security_server.repository.UserRepository;
