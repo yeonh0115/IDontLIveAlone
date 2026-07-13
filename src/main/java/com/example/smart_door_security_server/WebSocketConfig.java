@@ -1,4 +1,4 @@
-package com.example.smart_door_security_server.config;
+package com.example.smart_door_security_server;
 
 import com.example.smart_door_security_server.handler.AudioStreamHandler;
 import org.springframework.context.annotation.Bean;
