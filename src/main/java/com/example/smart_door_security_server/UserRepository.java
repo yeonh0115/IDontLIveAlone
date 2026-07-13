@@ -1,6 +1,6 @@
 package com.example.smart_door_security_server;
 
-import com.example.smart_door_security_server.domain.User;
+import com.example.smart_door_security_server.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
