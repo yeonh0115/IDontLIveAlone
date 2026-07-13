@@ -1,5 +1,4 @@
-package com.example.smart_door_security_server.domain;
-
+package com.example.smart_door_security_server;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
