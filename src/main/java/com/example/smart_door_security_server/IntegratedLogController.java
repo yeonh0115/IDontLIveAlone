@@ -1,7 +1,7 @@
 package com.example.smart_door_security_server;
 
-import com.example.smart_door_security_server.domain.IntegratedLog;
-import com.example.smart_door_security_server.repository.IntegratedLogRepository;
+import com.example.smart_door_security_server.IntegratedLog;
+import com.example.smart_door_security_server.IntegratedLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
