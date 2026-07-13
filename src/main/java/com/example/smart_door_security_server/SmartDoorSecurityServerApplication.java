@@ -5,9 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 public class SmartDoorSecurityServerApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(SmartDoorSecurityServerApplication.class, args);
     }
-
 }

@@ -8,11 +8,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "ai_detections")
+@Table(name = "audio_logs")
 @Getter
 @Setter
 @NoArgsConstructor
-public class AiDetection {
+public class AudioLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,14 +22,8 @@ public class AiDetection {
     @JoinColumn(name = "log_id")
     private IntegratedLog log;
 
-    @Column(name = "detected_object", length = 50)
-    private String detectedObject;
-
-    @Column(name = "confidence")
-    private Float confidence;
-
-    @Column(name = "image_path", length = 255)
-    private String imagePath;
+    @Column(name = "audio_path", length = 500)
+    private String audioPath;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
