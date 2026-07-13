@@ -1,5 +1,4 @@
-package com.example.smart_door_security_server.handler;
-
+package com.example.smart_door_security_server;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
