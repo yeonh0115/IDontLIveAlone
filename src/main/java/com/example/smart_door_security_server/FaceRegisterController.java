@@ -1,7 +1,7 @@
 package com.example.smart_door_security_server;
 
-import com.example.smart_door_security_server.domain.FaceInfo;
-import com.example.smart_door_security_server.repository.FaceInfoRepository;
+import com.example.smart_door_security_server.FaceInfo;
+import com.example.smart_door_security_server.FaceInfoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
