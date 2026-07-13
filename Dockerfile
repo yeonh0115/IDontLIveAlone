@@ -2,6 +2,10 @@
 FROM gradle:8.5-jdk21 AS build
 COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
+
+# 💡 이 부분을 추가했습니다! gradlew 파일에 실행 권한을 강제로 줍니다.
+RUN chmod +x gradlew
+
 RUN ./gradlew clean build -x test --no-daemon
 
 # 2단계: 자바 21 실행 환경 구축
