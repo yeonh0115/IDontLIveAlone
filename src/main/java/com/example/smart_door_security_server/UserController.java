@@ -1,7 +1,5 @@
 package com.example.smart_door_security_server;
 
-import com.example.smart_door_security_server.User;
-import com.example.smart_door_security_server.UserRepository;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
