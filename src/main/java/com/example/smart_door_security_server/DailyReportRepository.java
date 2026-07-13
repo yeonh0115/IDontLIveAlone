@@ -1,4 +1,4 @@
-package com.example.smart_door_security_server.repository;
+package com.example.smart_door_security_server;
 
 import com.example.smart_door_security_server.domain.DailyReport;
 import org.springframework.data.jpa.repository.JpaRepository;
