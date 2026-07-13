@@ -1,6 +1,5 @@
 package com.example.smart_door_security_server;
 
-import com.example.smart_door_security_server.AudioStreamHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
