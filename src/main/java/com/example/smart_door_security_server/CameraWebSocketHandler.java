@@ -5,8 +5,6 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
 
-import java.lang.reflect.Field;
-
 public class CameraWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
@@ -16,31 +14,20 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
-        byte[] imageBytes = message.getPayload().array();
-        updateControllerFrames(imageBytes);
+        try {
+            byte[] imageBytes = message.getPayload().array();
+            
+            // ⚡ 리플렉션 없이 아주 안전하고 빠르게 기존 컨트롤러 static 변수 갱신!
+            VideoStreamingController.updateFrameDirectly(imageBytes);
+            
+        } catch (Exception e) {
+            System.err.println("[카메라 웹소켓 에러] 데이터 처리 중 예외 발생: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         System.out.println("[카메라 웹소켓] ❌ 라즈베리파이 카메라 연결이 끊겼습니다. 상태코드: " + status.getCode());
-    }
-
-    /**
-     * 💡 기존 VideoStreamingController의 static 변수에 직접 프레임 데이터를 주입
-     */
-    private void updateControllerFrames(byte[] imageBytes) {
-        try {
-            Field frameField = VideoStreamingController.class.getDeclaredField("currentFrame");
-            Field timeField = VideoStreamingController.class.getDeclaredField("lastUpdateTime");
-
-            frameField.setAccessible(true);
-            timeField.setAccessible(true);
-
-            frameField.set(null, imageBytes);
-            timeField.set(null, System.currentTimeMillis());
-
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            System.err.println("[카메라 웹소켓 에러] VideoStreamingController 필드 갱신 실패: " + e.getMessage());
-        }
     }
 }
