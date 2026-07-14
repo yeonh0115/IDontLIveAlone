@@ -84,7 +84,7 @@ public class VideoStreamingController {
 
                     // 💡 전송 속도 조절 (약 20 FPS 전송으로 스프링 부트 메모리/CPU 부하를 제어합니다)
                     try {
-                        Thread.sleep(50);
+                        Thread.sleep(10);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         break;
