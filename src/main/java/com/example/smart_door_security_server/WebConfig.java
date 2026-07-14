@@ -19,7 +19,8 @@ public class WebConfig implements WebMvcConfigurer {
     @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-        container.setMaxBinaryMessageBufferSize(512 * 1024); # 바이너리 버퍼 512KB로 확장
+        // ⚡ 자바 주석(//)으로 안전하게 변경하여 컴파일 에러를 방지합니다.
+        container.setMaxBinaryMessageBufferSize(512 * 1024); // 바이너리 버퍼 512KB로 확장
         container.setMaxTextMessageBufferSize(512 * 1024);
         return container;
     }
