@@ -6,24 +6,31 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
+import java.io.File;
+
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
     
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // 🎯 [해결] 파일 저장용 절대 경로 주소와 완벽하게 일치시킵니다.
+        // 1. 프로젝트 기준 절대 경로 확보 및 표준화
         String uploadDir = System.getProperty("user.dir") + "/pictures/";
+        File file = new File(uploadDir);
         
-        // OS별 호환성을 보장하기 위해 슬래시(/) 형태로 규격화합니다.
-        uploadDir = uploadDir.replace("\\", "/");
-        if (!uploadDir.endsWith("/")) {
-            uploadDir += "/";
+        // 2. 디렉토리가 없을 시 오동작 방지를 위해 생성 보장
+        if (!file.exists()) {
+            file.mkdirs();
         }
 
-        registry.addResourceHandler("/pictures/**")
-                .addResourceLocations("file:" + uploadDir);
+        // 🎯 [핵심 해결책]: toURI().toString()을 사용하면 OS가 무엇이든(윈도우/리눅스) 
+        // 스프링이 요구하는 표준 프로토콜('file:/...' 또는 'file:///') 형식을 완벽하게 자동 생성해 줍니다.
+        String resourceLocation = file.toURI().toString();
 
-        System.out.println("[WebConfig] 📂 정적 리소스 실제 매핑 경로: " + uploadDir);
+        registry.addResourceHandler("/pictures/**")
+                .addResourceLocations(resourceLocation);
+
+        System.out.println("[WebConfig] 📂 정적 리소스 로딩 디렉토리: " + uploadDir);
+        System.out.println("[WebConfig] 🔗 스프링 등록 리소스 위치 프로토콜: " + resourceLocation);
     }
 
     @Bean
