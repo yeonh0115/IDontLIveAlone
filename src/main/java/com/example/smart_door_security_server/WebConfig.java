@@ -11,15 +11,24 @@ public class WebConfig implements WebMvcConfigurer {
     
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // "./pictures/" 폴더에 저장된 이미지를 외부에서 URL로 접근할 수 있게 허용
+        // 🎯 [해결] 파일 저장용 절대 경로 주소와 완벽하게 일치시킵니다.
+        String uploadDir = System.getProperty("user.dir") + "/pictures/";
+        
+        // OS별 호환성을 보장하기 위해 슬래시(/) 형태로 규격화합니다.
+        uploadDir = uploadDir.replace("\\", "/");
+        if (!uploadDir.endsWith("/")) {
+            uploadDir += "/";
+        }
+
         registry.addResourceHandler("/pictures/**")
-                .addResourceLocations("file:./pictures/");
+                .addResourceLocations("file:" + uploadDir);
+
+        System.out.println("[WebConfig] 📂 정적 리소스 실제 매핑 경로: " + uploadDir);
     }
 
     @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-        // ⚡ 자바 주석(//)으로 안전하게 변경하여 컴파일 에러를 방지합니다.
         container.setMaxBinaryMessageBufferSize(512 * 1024); // 바이너리 버퍼 512KB로 확장
         container.setMaxTextMessageBufferSize(512 * 1024);
         return container;
