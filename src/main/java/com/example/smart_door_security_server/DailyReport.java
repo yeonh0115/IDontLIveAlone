@@ -36,6 +36,10 @@ public class DailyReport {
     @Column(name = "report_text", columnDefinition = "TEXT")
     private String reportText;
 
+    // 📌 [추가] 이미지 URL을 저장할 컬럼 생성 (안드로이드의 photoUrl과 자동 매핑)
+    @Column(name = "photo_url", length = 500)
+    private String photoUrl;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
