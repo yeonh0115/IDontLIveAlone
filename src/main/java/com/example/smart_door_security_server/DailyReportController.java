@@ -1,13 +1,9 @@
 package com.example.smart_door_security_server;
 
-import com.example.smart_door_security_server.DailyReport;
-import com.example.smart_door_security_server.User;
-import com.example.smart_door_security_server.DailyReportRepository;
-import com.example.smart_door_security_server.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @CrossOrigin(origins = "*")
 @RestController
@@ -20,7 +16,16 @@ public class DailyReportController {
 
     @GetMapping("/{userNo}")
     public List<DailyReport> getUserReports(@PathVariable Integer userNo) {
-        return dailyReportRepository.findAllReports();
+        // 📌 수정: 모든 리포트를 다 가져오는 대신, 접속한 userNo의 리포트만 걸러서 반환합니다.
+        // JPA 영속성 프레임워크(LAZY 로딩) 오류 방지를 위해 프록시 순환참조를 끊고 전송합니다.
+        return dailyReportRepository.findAllReports().stream()
+                .filter(report -> report.getUser().getUserNo().equals(userNo))
+                .map(report -> {
+                    // 순환 참조 및 직렬화 에러를 차단하기 위해 임시로 연관관계 필드를 비웁니다.
+                    report.setUser(null); 
+                    return report;
+                })
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/setup-test")
@@ -42,6 +47,8 @@ public class DailyReportController {
                 report.setTotalEvents(10 + i * 2);
                 report.setHighRiskEvents(i % 2);
                 report.setReportText(i + "일 전 가구 보안 리포트입니다.");
+                // 테스트 시 더미 이미지 주소를 넣어둡니다.
+                report.setPhotoUrl("https://idontlivealone.onrender.com/uploads/test_image.jpg");
 
                 dailyReportRepository.save(report);
             }
