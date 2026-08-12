@@ -15,24 +15,25 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @CrossOrigin(origins = "*")
 @RestController
-@RequiredArgsConstructor // 📌 의존성 주입을 위해 추가
+@RequiredArgsConstructor
 @RequestMapping("/api")
 public class ImageUploadController {
 
-    // 📌 리포트 업데이트를 위해 리포지토리 의존성 주입 추가
     private final DailyReportRepository dailyReportRepository;
     private final UserRepository userRepository;
 
-    private static final String UPLOAD_DIR = "src/main/resources/static/uploads/";
+    // 📌 Render 서버 배포 환경(JAR 실행) 지원을 위해 실행 위치 기준 동적 경로 설정
+    private static final String UPLOAD_DIR = System.getProperty("user.dir") + File.separator + "uploads" + File.separator;
 
     @PostMapping("/upload")
     public ResponseEntity<?> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam("log_id") String logId,
-            @RequestParam("date") String date) { // 파이썬에서 날짜 포맷은 "2026-07-15" 형태로 와야 합니다.
+            @RequestParam("date") String date) {
 
         if (file.isEmpty()) {
             Map<String, Object> errorResponse = new HashMap<>();
@@ -41,71 +42,72 @@ public class ImageUploadController {
         }
 
         try {
+            // 업로드 폴더가 없으면 생성
             File uploadDirFile = new File(UPLOAD_DIR);
             if (!uploadDirFile.exists()) {
                 uploadDirFile.mkdirs();
             }
 
+            // 파일명 설정 및 UUID를 통한 파일 중복 덮어쓰기 방지
             String originalFilename = file.getOriginalFilename();
-            if (originalFilename == null) {
+            if (originalFilename == null || originalFilename.isEmpty()) {
                 originalFilename = "event_" + logId + ".jpg";
             }
             
-            Path filepath = Paths.get(UPLOAD_DIR, originalFilename);
+            String storeFilename = UUID.randomUUID().toString().substring(0, 8) + "_" + originalFilename;
+            
+            // 파일 저장
+            Path filepath = Paths.get(UPLOAD_DIR, storeFilename);
             Files.write(filepath, file.getBytes());
 
-            String fileDownloadUri = "/uploads/" + originalFilename;
+            String fileDownloadUri = "/uploads/" + storeFilename;
             String fullImageUrl = "https://idontlivealone.onrender.com" + fileDownloadUri;
 
-            // ================== 📌 [핵심 연동 코드 추가] ==================
+            // ================== 📌 [DB 연동 및 DailyReport 업데이트] ==================
             try {
-                // 1. 파이썬이 넘겨준 날짜 정보 파싱 ("2026-07-15" -> LocalDate)
                 LocalDate parsedDate = LocalDate.parse(date);
 
-                // 2. 임의의 테스트 유저 1번 조회 (또는 상황에 맞게 유저 설정)
+                // 테스트용 사용자 (ID 1번 우선 조회, 없으면 첫 번째 유저 선택)
                 User user = userRepository.findById(1)
                         .orElseGet(() -> userRepository.findAll().stream().findFirst().orElse(null));
 
                 if (user != null) {
-                    // 3. 해당 유저의 해당 날짜 리포트가 이미 존재하는지 조회
                     Optional<DailyReport> existingReport = dailyReportRepository.findByUserAndReportDate(user, parsedDate);
 
                     if (existingReport.isPresent()) {
-                        // 이미 리포트가 있다면 사진 주소만 업데이트
+                        // 기존 리포트가 있으면 사진 URL 덮어쓰기/업데이트
                         DailyReport report = existingReport.get();
                         report.setPhotoUrl(fullImageUrl);
                         dailyReportRepository.save(report);
-                        System.out.println("💾 [리포트 업데이트 성공] 기존 리포트에 사진 추가 완료: " + fullImageUrl);
+                        System.out.println("💾 [리포트 업데이트 성공] 기존 리포트에 사진 추가: " + fullImageUrl);
                     } else {
-                        // 만약 그날 리포트 데이터가 아예 없다면 임시로 하나 생성해서 사진 저장
+                        // 해당 일자 리포트가 없으면 신규 생성
                         DailyReport newReport = new DailyReport();
                         newReport.setUser(user);
                         newReport.setReportDate(parsedDate);
                         newReport.setTotalEvents(1);
-                        newReport.setHighRiskEvents(1); // 경고 이미지가 찍혔으므로 위험 1 부여
+                        newReport.setHighRiskEvents(1);
                         newReport.setReportText("**주의: 보안 경고 발생**\n문 열림 시도가 감지되었습니다.");
                         newReport.setPhotoUrl(fullImageUrl);
                         dailyReportRepository.save(newReport);
-                        System.out.println("💾 [리포트 생성 성공] 새 리포트 생성 및 사진 저장 완료: " + fullImageUrl);
+                        System.out.println("💾 [리포트 생성 성공] 새 리포트 생성 및 사진 저장: " + fullImageUrl);
                     }
                 }
             } catch (Exception dbEx) {
-                System.err.println("🚨 [DB 연동 실패] 리포트에 이미지 URL을 업데이트하지 못했습니다: " + dbEx.getMessage());
-                // 파일 업로드 자체가 실패한 것은 아니므로, 업로드 처리는 정상 진행합니다.
+                System.err.println("🚨 [DB 연동 실패]: " + dbEx.getMessage());
             }
-            // ==============================================================
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("url", fullImageUrl);
-            response.put("filename", originalFilename);
+            response.put("filename", storeFilename);
 
-            System.out.println("📸 [스프링 부트 업로드 성공] Log ID: " + logId + " -> URL: " + response.get("url"));
+            System.out.println("📸 [업로드 성공] Log ID: " + logId + " -> URL: " + fullImageUrl);
 
             return ResponseEntity.ok(response);
 
         } catch (IOException e) {
-            System.err.println("🚨 파일 저장 중 서버 에러 발생: " + e.getMessage());
+            System.err.println("🚨 파일 저장 실패: " + e.getMessage());
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("error", "서버 내부 파일 저장 에러: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
