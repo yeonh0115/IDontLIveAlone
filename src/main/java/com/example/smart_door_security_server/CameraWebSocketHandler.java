@@ -1,10 +1,12 @@
 package com.example.smart_door_security_server;
 
+import org.springframework.stereotype.Component; // 👈 추가
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
 
+@Component // 👈 필수! 스프링 빈으로 등록해야 WebConfig에서 주입을 받습니다.
 public class CameraWebSocketHandler extends BinaryWebSocketHandler {
 
     @Override
@@ -16,10 +18,7 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         try {
             byte[] imageBytes = message.getPayload().array();
-            
-            // ⚡ 리플렉션 없이 아주 안전하고 빠르게 기존 컨트롤러 static 변수 갱신!
             VideoStreamingController.updateFrameDirectly(imageBytes);
-            
         } catch (Exception e) {
             System.err.println("[카메라 웹소켓 에러] 데이터 처리 중 예외 발생: " + e.getMessage());
             e.printStackTrace();
