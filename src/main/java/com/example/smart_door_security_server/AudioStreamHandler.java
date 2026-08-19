@@ -1,7 +1,7 @@
 package com.example.smart_door_security_server;
 
-import org.slf4j.Logger; // 👈 org.slf4j 로 수정
-import org.slf4j.LoggerFactory; // 👈 org.slf4j 로 수정
+import org.slf4j.Logger; // 👈 org.slf4j
+import org.slf4j.LoggerFactory; // 👈 org.slf4j
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
