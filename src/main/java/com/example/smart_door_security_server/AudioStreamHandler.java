@@ -1,7 +1,7 @@
-package com.example.smart_door_security_server.handler; // 💡 프로젝트 패키지 경로 확인 필요
+package com.example.smart_door_security_server.handler; // 💡 패키지 경로 통일
 
-import org.slf4j.Logger; // 💡 org.slf -> org.slf4j 수정
-import org.slf4j.LoggerFactory; // 💡 org.slf -> org.slf4j 수정
+import org.slf4j.Logger; // 💡 slf4j로 수정
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
@@ -31,7 +31,7 @@ public class AudioStreamHandler extends BinaryWebSocketHandler {
                 try {
                     s.sendMessage(message);
                 } catch (IOException e) {
-                    log.error("오디오 메세지 중계 오류", e); // 💡 log.e -> log.error 수정
+                    log.error("오디오 메세지 중계 오류", e); // 💡 log.error로 수정
                 }
             }
         }
