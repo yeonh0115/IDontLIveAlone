@@ -1,9 +1,5 @@
 package com.example.smart_door_security_server;
 
-// 💡 핸들러 패키지 import 추가
-import com.example.smart_door_security_server.handler.AudioStreamHandler;
-import com.example.smart_door_security_server.handler.CameraWebSocketHandler; // CameraWebSocketHandler 위치 확인 필요
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,10 +16,11 @@ import java.io.File;
 @Configuration
 @EnableWebSocket
 @RequiredArgsConstructor
-public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer { 
+public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
 
+    // 같은 패키지 안의 @Component 빈을 자동으로 주입받습니다.
     private final AudioStreamHandler audioStreamHandler;
-    private final CameraWebSocketHandler cameraWebSocketHandler; // 🎯 카메라 핸들러 추가 주입
+    private final CameraWebSocketHandler cameraWebSocketHandler;
 
     // 1. 정적 리소스 설정
     @Override
@@ -47,29 +44,29 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
     // 2. 비동기 요청 타임아웃 설정
     @Override
     public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
-        configurer.setDefaultTimeout(-1); 
+        configurer.setDefaultTimeout(-1);
         System.out.println("[WebConfig] ⚙️ Async Request Timeout 설정을 무제한(-1)으로 완료했습니다.");
     }
 
-    // 3. 웹소켓 핸들러 통합 등록 (오디오 + 카메라)
+    // 3. 웹소켓 핸들러 등록
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        // 오디오 스트림 핸들러 등록
+        // 오디오 웹소켓
         registry.addHandler(audioStreamHandler, "/ws/audio", "/audio-stream")
                 .setAllowedOrigins("*");
 
-        // 카메라 고속 스트림 핸들러 등록
+        // 카메라 웹소켓
         registry.addHandler(cameraWebSocketHandler, "/ws/camera")
                 .setAllowedOrigins("*");
     }
 
-    // 4. 웹소켓 버퍼 및 타임아웃 설정
+    // 4. 웹소켓 컨테이너 설정
     @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxBinaryMessageBufferSize(512 * 1024);
         container.setMaxTextMessageBufferSize(512 * 1024);
-        container.setMaxSessionIdleTimeout(10 * 60 * 1000L); 
+        container.setMaxSessionIdleTimeout(10 * 60 * 1000L);
         
         System.out.println("[WebConfig] ⚙️ WebSocket Max Session Idle Timeout 설정을 10분으로 완료했습니다.");
         return container;
