@@ -24,7 +24,7 @@ public class AudioStreamHandler extends BinaryWebSocketHandler {
         log.info("🟢 새로운 오디오 스트리밍 세션 연결됨: {}", session.getId());
     }
 
-    @Override;
+    @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         // 들어온 Audio PCM 버퍼 패킷을 연결된 모든 클라이언트(라즈베리파이 등)로 실시간 중계
         for (WebSocketSession s : sessions) {
