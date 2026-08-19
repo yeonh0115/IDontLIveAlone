@@ -1,7 +1,7 @@
-package com.example.backend.handler;
+package com.example.smart_door_security_server.handler; // 💡 프로젝트 패키지 경로 확인 필요
 
-import org.slf.Logger;
-import org.slf.LoggerFactory;
+import org.slf4j.Logger; // 💡 org.slf -> org.slf4j 수정
+import org.slf4j.LoggerFactory; // 💡 org.slf -> org.slf4j 수정
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
@@ -26,13 +26,12 @@ public class AudioStreamHandler extends BinaryWebSocketHandler {
 
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
-        // 들어온 Audio PCM 버퍼 패킷을 연결된 모든 클라이언트(라즈베리파이 등)로 실시간 중계
         for (WebSocketSession s : sessions) {
             if (s.isOpen() && !s.getId().equals(session.getId())) {
                 try {
                     s.sendMessage(message);
                 } catch (IOException e) {
-                    log.e("오디오 메세지 중계 오류", e);
+                    log.error("오디오 메세지 중계 오류", e); // 💡 log.e -> log.error 수정
                 }
             }
         }
