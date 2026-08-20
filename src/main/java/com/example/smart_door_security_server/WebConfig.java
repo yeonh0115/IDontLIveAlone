@@ -22,23 +22,31 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
     private final AudioStreamHandler audioStreamHandler;
     private final CameraWebSocketHandler cameraWebSocketHandler;
 
-    // 1. 정적 리소스 설정
+    // 1. 정적 리소스 설정 (/pictures/** 및 /uploads/** 경로 둘 다 매핑)
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String uploadDir = System.getProperty("user.dir") + "/pictures/";
-        File file = new File(uploadDir);
+        String baseDir = System.getProperty("user.dir");
         
-        if (!file.exists()) {
-            file.mkdirs();
-        }
+        // pictures 및 uploads 디렉토리 생성 보장
+        File picturesDir = new File(baseDir + "/pictures/");
+        File uploadsDir = new File(baseDir + "/uploads/");
+        
+        if (!picturesDir.exists()) picturesDir.mkdirs();
+        if (!uploadsDir.exists()) uploadsDir.mkdirs();
 
-        String resourceLocation = file.toURI().toString();
+        String picturesLocation = picturesDir.toURI().toString();
+        String uploadsLocation = uploadsDir.toURI().toString();
 
+        // /pictures/** 요청 처리
         registry.addResourceHandler("/pictures/**")
-                .addResourceLocations(resourceLocation);
+                .addResourceLocations(picturesLocation);
 
-        System.out.println("[WebConfig] 📂 정적 리소스 로딩 디렉토리: " + uploadDir);
-        System.out.println("[WebConfig] 🔗 스프링 등록 리소스 위치 프로토콜: " + resourceLocation);
+        // /uploads/** 요청 처리 (404 에러 방지)
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations(uploadsLocation, picturesLocation);
+
+        System.out.println("[WebConfig] 📂 정적 리소스 로딩 디렉토리: " + baseDir);
+        System.out.println("[WebConfig] 🔗 /pictures/ 및 /uploads/ 매핑 완료");
     }
 
     // 2. 비동기 요청 타임아웃 설정
