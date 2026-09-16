@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="280dp"
+    android:layout_height="wrap_content"
+    android:layout_gravity="center"
+    app:cardCornerRadius="24dp"
+    app:cardBackgroundColor="#FFFFFF"
+    app:cardElevation="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="프로필 캐릭터 선택"
+            android:textColor="#1E293B"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="20dp"/>
+
+        <GridLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:columnCount="2"
+            android:rowCount="2"
+            android:alignmentMode="alignMargins"
+            android:columnOrderPreserved="false">
+
+            <ImageView
+                android:id="@+id/iv_select_police"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="12dp"
+                android:src="@drawable/avatar_police"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="경찰" />
+
+            <ImageView
+                android:id="@+id/iv_select_sheriff"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="12dp"
+                android:src="@drawable/avatar_sheriff"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="보안관" />
+
+            <ImageView
+                android:id="@+id/iv_select_home"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="12dp"
+                android:src="@drawable/avatar_home"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="우리집" />
+
+            <ImageView
+                android:id="@+id/iv_select_ghost"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_margin="12dp"
+                android:src="@drawable/avatar_ghost"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="유령" />
+        </GridLayout>
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

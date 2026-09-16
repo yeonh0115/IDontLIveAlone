@@ -1,0 +1,422 @@
+[
+  {
+    "path": "android/.gitignore",
+    "sha256": "703238443066325af08e3868d1e4b571a633baf68fcc93e323f0066999a97e1b"
+  },
+  {
+    "path": "android/build.gradle.kts",
+    "sha256": "bb2ce217e0af55a72459df6583ea2e7899527094371f39a96a444f6d9aa7b988"
+  },
+  {
+    "path": "android/settings.gradle.kts",
+    "sha256": "5ad0d876d28b6018e4d7bc66954983bf71f32f82450946f420913ab84694ae75"
+  },
+  {
+    "path": "android/gradle.properties",
+    "sha256": "41a9783e6d8fba6d52cf787adab4b02b9d0593169e30590c51aa9be2eebe8182"
+  },
+  {
+    "path": "android/gradlew",
+    "sha256": "63135287117a1e6d12c84580f1f49c61d1ba02218ecd28660605e97f976e7d65"
+  },
+  {
+    "path": "android/gradlew.bat",
+    "sha256": "af835f98787e9269af5a046edcb821a592fed372139df7b947b471a63cfc236b"
+  },
+  {
+    "path": "android/app/build.gradle.kts",
+    "sha256": "b2674c7edf0503bed0ed26ada50fbbde6eed605bea4c8e487ba60dba4ea95a35"
+  },
+  {
+    "path": "android/app/proguard-rules.pro",
+    "sha256": "56fd960cf225f6ca40f982b13a5dbb0d8bc3dfde13ff76422825c6070d0a1890"
+  },
+  {
+    "path": "android/gradle/wrapper/gradle-wrapper.jar",
+    "sha256": "e996d452d2645e70c01c11143ca2d3742734a28da2bf61f25c82bdc288c9e637"
+  },
+  {
+    "path": "android/gradle/wrapper/gradle-wrapper.properties",
+    "sha256": "d6a88f3bd747b77e22153662ba0421116d9b1a3118e8ab6e31288bd4ff6b948d"
+  },
+  {
+    "path": "android/app/src/main/AndroidManifest.xml",
+    "sha256": "80668ee436864616d6ac1f2c2ee44f9a22a1b482b0663ded1a57865017f76794"
+  },
+  {
+    "path": "android/app/src/main/ic_launcher-playstore.png",
+    "sha256": "a4f4c3810e3f8bda0fc97be45b30e6b3ac14285efc15413557cacfb2fd82370c"
+  },
+  {
+    "path": "android/app/src/test/java/com/example/na_honja_ansanda/ExampleUnitTest.java",
+    "sha256": "39491d121d45138315396b287646cc15d1d8ce436e4d7922f815d3ab44194df2"
+  },
+  {
+    "path": "android/app/src/main/res/color/nav_item_color.xml",
+    "sha256": "e0e6e8bf964f62508964c2d33844ea7790de1039f2b9de56300b65376233dad9"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/avatar_ghost.xml",
+    "sha256": "55550d60a36a014280637e9c666f78c11e422aa79294d42dfd1cb75aa5507d81"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/avatar_home.xml",
+    "sha256": "d40abb5c4ea80f30deaf532ed1232b9dfd0186cbc6a14e62057a5dd004e84ac1"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/avatar_police.xml",
+    "sha256": "a322888b22e4f8e1bdf39c4c3b3563f6d9ddf9324d78ae7bdca7d677acfa452c"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/avatar_sheriff.xml",
+    "sha256": "4fe75d98694927c871df92fe810377a3ac2d768f28c602dc51569c407d267119"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/bg_bottom_nav.xml",
+    "sha256": "241eef454aa09358477af645d60793f6bb8506e7c669578c2d97fa88ba9a1f40"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/bg_text_button_pill.xml",
+    "sha256": "ae7af477b2359608d69f8189263af9cc28c32309779e795556b60152d519bafa"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/btn_primary.xml",
+    "sha256": "10802409b274dd9edb4f6b1195bb4c35918acd6a0e3b512cff653d1f59449fc0"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/btn_secondary.xml",
+    "sha256": "452fdbda838bca41ff839ae966fff5cea6862e2ceb6ec73b583d1b898c1935db"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/card_background.xml",
+    "sha256": "fb77308e69748ee3f7b4970d8eac20e2f8d3615d9fa242e627b51c6767a33b28"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/card_background_selected.xml",
+    "sha256": "ab06db0218de9b757ee47cce87acafd69c9b6702a9a3cc8f424a1b6fa778a754"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/card_custom_background.xml",
+    "sha256": "2aef86dcd177d8582b3e17443b579f5a4b90c2cef1a101ec0396a1ab547e5631"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/design_door_left.xml",
+    "sha256": "4007ef11b0ce1f62b07f86f373f3866e1ab7f7659d47546cb64c9810ad44a28b"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/design_door_right.xml",
+    "sha256": "ac87fbb71bfaa92ae06fa82b181dadbb2c5b16819e6f8ad79efe96e041d77d64"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_arrow_back.xml",
+    "sha256": "88edd4c489cbce017b26fb3935515a0c55b1b3c720a00ea4d6b555a93977f46d"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_beautiful_user.xml",
+    "sha256": "717bfd91d7ce40c40f733e37c8e35fb76a71825db824f0f40a0cd07c0fa759ae"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_chevron_left.xml",
+    "sha256": "f61de5304f2c9ca2ee2a128be272b4998c90c692e25f5763b84d196f7be1b129"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_chevron_right.xml",
+    "sha256": "d6ca64d9f609839f3f36bc3e45c70aaa2b486dabe39bc5fb0f74c3d4a8e06215"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_launcher_background.xml",
+    "sha256": "e32765639e1658427cb9821350571c37859d8a8f0a9d12c0d8f7c15913a20a93"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_launcher_foreground.xml",
+    "sha256": "01d1a6a6c1234eb7fe270d097eb283d72b9c95ae5118886f1b6573aad280f1f7"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_lock_body.xml",
+    "sha256": "bb47da270cf672c0814d96f39ee2009b22c1542036a5822fa1727fe3cd8ebfa5"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/ic_lock_shackle.xml",
+    "sha256": "02aeb10c621aac19e87f716fcac4e431c5d7de3d1f60b37c530436a79cd26c48"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/img.png",
+    "sha256": "6e1ecc728c6d53fcc51cf0df100f565b06c2a3427908a251f579b3f32bdf98cb"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/primary_button.xml",
+    "sha256": "014af89cc584308670d5fd3ca36e9a6404b5540a0a12f7eb1fdd1a343c0ac871"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/toss_card_background.xml",
+    "sha256": "f71bf3aef46f059e39bc68da789c12293234316efb43ff7b845481235ce252a6"
+  },
+  {
+    "path": "android/app/src/main/res/drawable/toss_mic_button_background.xml",
+    "sha256": "0972e9fa76cec5f536ca433dd420de41c1196e0feee4109f2aaf61a629af089e"
+  },
+  {
+    "path": "android/app/src/main/res/layout/activity_faq.xml",
+    "sha256": "0dce3ae66a71cf2d45bf3608647eb5b296a885ff162e6cebb99993a1cd110765"
+  },
+  {
+    "path": "android/app/src/main/res/layout/activity_login.xml",
+    "sha256": "eaddaf8b956ff9312539658eea00325b09bbdd97d998a8ff63f35828a72310bd"
+  },
+  {
+    "path": "android/app/src/main/res/layout/activity_main.xml",
+    "sha256": "5767b6dccde1880e86aa4090de91e521f6438e99860c64c4d808fb5085636892"
+  },
+  {
+    "path": "android/app/src/main/res/layout/activity_notice.xml",
+    "sha256": "ac1544b0d5bb81bc3d8662d074834c562c9f0c18419be9964dad57c443a1dc12"
+  },
+  {
+    "path": "android/app/src/main/res/layout/activity_report_list.xml",
+    "sha256": "2c82d8d044d4cef42e414908be2af2b299d115973f669425848aca1d66f5a240"
+  },
+  {
+    "path": "android/app/src/main/res/layout/activity_signup.xml",
+    "sha256": "e13b61eada6af6eea40156e909b14368584862d166454a99abaf5d1e3a6b40d4"
+  },
+  {
+    "path": "android/app/src/main/res/layout/dialog_avatar_select.xml",
+    "sha256": "7922496ab4c588c4e555d0b57b150b48b1c6ff62272c324a59921ef2063edfbb"
+  },
+  {
+    "path": "android/app/src/main/res/layout/fragment_face_scan.xml",
+    "sha256": "1461fdf88640e52e561e0b5442e5dfefd04c57655e28f121b5bb7ad516a7265b"
+  },
+  {
+    "path": "android/app/src/main/res/layout/fragment_home.xml",
+    "sha256": "3ba40ef77bdaffe7ac0811ba3d722c1bb5532309cede6a5ad3269674ea7c9573"
+  },
+  {
+    "path": "android/app/src/main/res/layout/fragment_my_page.xml",
+    "sha256": "563e4a7a33565291dd5774e14437ecd65377724bdddf0300a059409b67c57972"
+  },
+  {
+    "path": "android/app/src/main/res/layout/fragment_safety.xml",
+    "sha256": "9fd1c50ef6b074d2e7fbd154458b7cf12e2525019db54d5715b3fe71c0b55f2d"
+  },
+  {
+    "path": "android/app/src/main/res/layout/fragment_security_hub.xml",
+    "sha256": "8382e08571e088f157afce7fc52ab42630b7ba4c1a5a1eab875f577413962070"
+  },
+  {
+    "path": "android/app/src/main/res/layout/item_accordion.xml",
+    "sha256": "85235aa4ffb333a09e902af8c27bd94026fc84a7093a5febbddae0af1a90a4b3"
+  },
+  {
+    "path": "android/app/src/main/res/layout/item_calendar_day.xml",
+    "sha256": "524575fe98869c2a4a49673f23d057d5193f74cf8b8079006253481448e81028"
+  },
+  {
+    "path": "android/app/src/main/res/layout/item_report.xml",
+    "sha256": "8e83bc186df3bd98a125b3432af49c571f4c3bf0f5793ab97e2f27e43ac48f8c"
+  },
+  {
+    "path": "android/app/src/main/res/menu/bottom_menu.xml",
+    "sha256": "d644069f43547231beb6ae78912c595017b8afe4fc69a71b96d83604956da1e4"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+    "sha256": "df72602bb30d9708720c28bd5e88f486dd79aad4a9687719e9b0ebf04f8be15b"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+    "sha256": "df72602bb30d9708720c28bd5e88f486dd79aad4a9687719e9b0ebf04f8be15b"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher.webp",
+    "sha256": "8962683b5e38a16ebc35046f3badad531db0bf86149d099ae7c1d5bed77c29de"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.webp",
+    "sha256": "9f67457c8597f1d6089afecd1de5ee05b0faa3f6a1783f385702c01802095c02"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-hdpi/ic_launcher_round.webp",
+    "sha256": "b156ebdd1cd219ca0281339a039036f18b1244ea9dc39e136bdb22353e9ff6b0"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher.webp",
+    "sha256": "71c0249cbd82f0017be74cdf2af2cd76352b170d0ed102ce2b0f4445c6deec63"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.webp",
+    "sha256": "96cec9c6159a592eb2fda727be9a03e53ee9c92cf8095c06babb6619b88e3fa1"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-mdpi/ic_launcher_round.webp",
+    "sha256": "0688f525d0bc6891269b1f0725ee26f50c8c15594d24d9cdb2c1784924ad7919"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher.webp",
+    "sha256": "b0a7e0c0d1927b55d2e991e64a52c57a08b45865f384abfc3df1badaaf0f31fb"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.webp",
+    "sha256": "8dab5825cc2cdbc47e3653a62d84305bf770be78a89877acfa69d99bba15d8f5"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.webp",
+    "sha256": "fbfcf5e7c7f5a466cb73d33aef4a92b24b981ed99f791c3c38d157185df204c0"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.webp",
+    "sha256": "15d02750b91ee7dd7a75a0bcdd14972c045f6a5343502f1f4711de375c1f56f1"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.webp",
+    "sha256": "5e4dd357d262415a48527708278b13e6c5afde60e09c9e252bf0481b7703c355"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.webp",
+    "sha256": "879bf201ba327b2a09b42c95f537a9bddf1d7c4ad908ad1fdd7749f0a5693008"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp",
+    "sha256": "716060f479527cc31ff965237a1811f0a44da35e65e5a66833c46002f9cb294f"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.webp",
+    "sha256": "aff810686701b693b8f0bf85c66969af166130e0d90d43e2e449e80882a5483a"
+  },
+  {
+    "path": "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp",
+    "sha256": "4c8370d6eb56312d9a1fde870273d6b897f6f6dfbbff796a2d5028933f5b8466"
+  },
+  {
+    "path": "android/app/src/main/res/values/colors.xml",
+    "sha256": "efb70d7499549a57cea32b00e790ef0632cb0c95cdaeefd16903c8cd12c889e4"
+  },
+  {
+    "path": "android/app/src/main/res/values/strings.xml",
+    "sha256": "bc300311b4e80a6a1bcd6e319cd46f5720182978ed8597bfcf9a51c2397b7b42"
+  },
+  {
+    "path": "android/app/src/main/res/values/themes.xml",
+    "sha256": "c659400dfdda1872d0a046cefafae02c82935de0bd75070b5eac1449238bff49"
+  },
+  {
+    "path": "android/app/src/main/res/values-night/themes.xml",
+    "sha256": "54e7b1d32b0ac2c37a8403b6e224efcbcc9a9758f65d0d309a8839a1f7ba53d9"
+  },
+  {
+    "path": "android/app/src/main/res/xml/backup_rules.xml",
+    "sha256": "6cf1a27e6807b1d24e41d3fbe7ddc1bfe1f42226027964f6eaf477d71b43b283"
+  },
+  {
+    "path": "android/app/src/main/res/xml/data_extraction_rules.xml",
+    "sha256": "cb1fc47ab4a984530ed60e0e6ee638929c3038290e7e7e0b4b03a3a30fbe7381"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/dto/DoorLockRequest.java",
+    "sha256": "12b9c497a1ad6c9353ec088f213c39684dc95886cc31e704604fd4fc3669e060"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/dto/LoginRequest.java",
+    "sha256": "04eeb99e65fe28d1b7885afe494310d8ed4357a34a1d1e5abc24d7cf4e7e420c"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/dto/SignUpRequest.java",
+    "sha256": "e2c4e48c5b3da49c0beaedc99ea04caf8f74d5caba3ecc5d98a51e5d383ebbf0"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/auth/LoginActivity.java",
+    "sha256": "f9bdffc7d29f2cde9bcbdb3a4a0624bd4e48afacfbf27f096a445817f3c701cb"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/auth/SignUPActivity.java",
+    "sha256": "41f212b9b3e79d7c1106830ec88da8e31d1de27e14af3655901d2f150f6a205b"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/main/HomeFragment.java",
+    "sha256": "ed4af670788e0bc134a408f67e86176137cae71db7b233d2c9aa8504a92568ee"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/main/MainActivity.java",
+    "sha256": "a1c9a9c6e0b43480e43e4c223fddaf269a2b0c95e486a13735273fdd50ab62d3"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/mypage/AccordionAdapter.java",
+    "sha256": "d1d8d9a87c46dedf9e303a7dde20cb9607022efdb9ebe60eaaff0a123cd15c7e"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/mypage/FaqActivity.java",
+    "sha256": "9192f6f44ffdb4ff0b51c84b077ac06635b4d3659615856479883b49c57ba735"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/mypage/MyPageFragment.java",
+    "sha256": "1284b0e4aebf81c16e05e4c9efc264dfef8232827a959068105f1f0636dfd69e"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/mypage/NoticeActivity.java",
+    "sha256": "308911ed57c6e2d8e6a76f3fc4effc57700ee1bf3964a2e34d67c3280336cfe8"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/report/ReportAdapter.java",
+    "sha256": "9e36a836cf7bbf07ab94cfc1a29597a5cdace3592f53876a0ec1fc7b69cc4685"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/report/ReportFragment.java",
+    "sha256": "d6e007db2dc4f3191926626834416762fc304d0f7a194f94ef7c92c8bc88afba"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/report/ReportListActivity.java",
+    "sha256": "64cbd27b24837c7a53224c70bdd5cd822acaa3ee3fc3e3868e7885558ac788fd"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/security/FaceScanFragment.java",
+    "sha256": "10ba3a8165b055e4965e0b0e6620301337a8853fb492071c3cbd56a1598d78a7"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/security/SafetyFragment.java",
+    "sha256": "b9e977151a2f3de4c9ca88a161d53e8da20e4f6d1baddc9d161a9ceb90718c22"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/ui/security/SecurityHubFragment.java",
+    "sha256": "106f9d869843939d7670bd4c5b8957949fb99f4945fffa8f2e47808ed96a2821"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/model/FaceInfo.java",
+    "sha256": "70b672a2d9602f7c2227853606f3f2e2b6f7bbe69eb01f1ab520ee93a63fa977"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/model/IntegratedLog.java",
+    "sha256": "a68006d05646a3d99500507bde3de63243f7b4370c80358fa9e06edb64483853"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/model/ReportResponse.java",
+    "sha256": "d6dfe63c1f0a044a92e879d5c04f1d348675158f7d44963da2f87dc9ae990de7"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/model/User.java",
+    "sha256": "49b992f5ff01768163a499f94a0e69a79f8bd4d079307917f8a650831e4b2471"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/remote/ApiClient.java",
+    "sha256": "5beba927a7f4248b36f07ba8ff4cd02e8bd2488dc25a1b71d97aca497c8e4bc8"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/remote/ApiService.java",
+    "sha256": "ab178097eda50f440ff8b04e5d39c3223bb55f86e5ff13d33699f71198080aea"
+  },
+  {
+    "path": "android/app/src/main/java/com/example/na_honja_ansanda/data/session/SessionManager.java",
+    "sha256": "c9b0d3fe9077824ae206d626d799981c9cda6b2b50c3f1b5fd117f6a26497ff0"
+  },
+  {
+    "path": "android/app/src/androidTest/java/com/example/na_honja_ansanda/ExampleInstrumentedTest.java",
+    "sha256": "6745c172ee0d46a7ac17d7c7b21601da6d58baa5ac4395cc0dc234613bbb468c"
+  },
+  {
+    "path": "raspberrypi/fin_camera.py",
+    "sha256": "0b00c9ab1e047032cea9db020f6cefc6f5eb4567d7be0b16c29e47b793630c0d"
+  },
+  {
+    "path": "raspberrypi/fin_face.py",
+    "sha256": "7ea3d0827b69b74eeb2e587daa9ef33743d7c06e08220dfda8ee1cf005830f57"
+  }
+]

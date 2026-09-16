@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Base.Theme.Na_honja_ansanda" parent="Theme.Material3.DayNight.NoActionBar">
+    </style>
+
+    <style name="Theme.Na_honja_ansanda" parent="Base.Theme.Na_honja_ansanda">
+        <item name="android:windowSplashscreenContent">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
+    <style name="CircleImage">
+        <item name="cornerSize">50%</item>
+    </style>
+
+</resources>
