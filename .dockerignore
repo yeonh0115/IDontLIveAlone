@@ -1,0 +1,12 @@
+.git
+.gradle
+**/build
+android
+raspberrypi
+docs
+data
+pictures
+uploads
+.env*
+*.jks
+*.keystore

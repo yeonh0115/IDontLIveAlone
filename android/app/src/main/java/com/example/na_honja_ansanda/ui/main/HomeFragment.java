@@ -32,6 +32,7 @@ import androidx.fragment.app.Fragment;
 
 import com.example.na_honja_ansanda.R;
 import com.example.na_honja_ansanda.data.model.IntegratedLog;
+import com.example.na_honja_ansanda.data.model.LoadState;
 import com.example.na_honja_ansanda.data.remote.ApiClient;
 import com.example.na_honja_ansanda.data.session.SessionManager;
 
@@ -74,6 +75,8 @@ public class HomeFragment extends Fragment {
 
     private List<IntegratedLog> originalLogList = new ArrayList<>();
     private String currentFilterMode = "all";
+    private LoadState logLoadState = LoadState.LOADING;
+    private Call<List<IntegratedLog>> logsCall;
 
     @Nullable
     @Override
@@ -168,37 +171,57 @@ public class HomeFragment extends Fragment {
     }
 
     private void fetchSensorLogs() {
-        if (sessionManager == null) {
-            setupDefaultUI();
+        if (!isAdded() || getView() == null) return;
+        if (sessionManager == null || sessionManager.getUserNo() == -1) {
+            logLoadState = LoadState.FAILED;
+            showSensorState("로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.", false);
             return;
         }
-
-        ApiClient.getApiService().getIntegratedLogs(sessionManager.getUserNo())
-                .enqueue(new Callback<List<IntegratedLog>>() {
+        if (logsCall != null) logsCall.cancel();
+        logLoadState = LoadState.LOADING;
+        showSensorState("보안 기록을 불러오고 있습니다.", false);
+        logsCall = ApiClient.getApiService().getIntegratedLogs(sessionManager.getUserNo());
+        logsCall.enqueue(new Callback<List<IntegratedLog>>() {
                     @Override
                     public void onResponse(@NonNull Call<List<IntegratedLog>> call, @NonNull Response<List<IntegratedLog>> response) {
-                        if (!isAdded() || getContext() == null) return;
+                        if (!isAdded() || getView() == null || call != logsCall) return;
 
                         if (response.isSuccessful() && response.body() != null) {
+                            logLoadState = LoadState.READY;
                             originalLogList = response.body();
                             updateRealSensorUI(originalLogList);
                         } else {
-                            setupDefaultUI();
+                            logLoadState = LoadState.FAILED;
+                            showSensorState("보안 기록을 불러오지 못했습니다. 다시 시도해주세요.", true);
                         }
                     }
 
                     @Override
                     public void onFailure(@NonNull Call<List<IntegratedLog>> call, @NonNull Throwable t) {
-                        if (!isAdded() || getContext() == null) return;
-                        setupDefaultUI();
+                        if (!isAdded() || getView() == null || call.isCanceled() || call != logsCall) return;
+                        logLoadState = LoadState.FAILED;
+                        showSensorState("서버에 연결하지 못했습니다. 연결을 확인한 후 다시 시도해주세요.", true);
                     }
                 });
     }
 
-    private void setupDefaultUI() {
-        if (tvDangerCount != null) tvDangerCount.setText("0건");
-        if (tvDangerTypes != null) tvDangerTypes.setText("0건");
-        showEmptyState();
+    private void showSensorState(String message, boolean canRetry) {
+        if (tvDangerCount != null) tvDangerCount.setText("—");
+        if (tvDangerTypes != null) tvDangerTypes.setText("—");
+        if (sensorContainer == null || getContext() == null) return;
+        sensorContainer.removeAllViews();
+        TextView status = new TextView(getContext());
+        status.setText(message);
+        status.setTextSize(14);
+        status.setGravity(Gravity.CENTER);
+        status.setPadding(16, 40, 16, 24);
+        sensorContainer.addView(status);
+        if (canRetry) {
+            android.widget.Button retry = new android.widget.Button(getContext());
+            retry.setText("다시 불러오기");
+            retry.setOnClickListener(v -> fetchSensorLogs());
+            sensorContainer.addView(retry);
+        }
     }
 
     private void toggleFilter(String targetFilter) {
@@ -281,11 +304,11 @@ public class HomeFragment extends Fragment {
             tvDangerTypes.setText(mediumCounter + "건");
         }
 
-        toggleFilter(currentFilterMode);
+        renderTimelineList();
     }
 
     private void renderTimelineList() {
-        if (sensorContainer == null) return;
+        if (sensorContainer == null || logLoadState != LoadState.READY) return;
         sensorContainer.removeAllViews();
 
         int renderedCount = 0;
@@ -427,7 +450,7 @@ public class HomeFragment extends Fragment {
         if (sensorContainer == null) return;
         sensorContainer.removeAllViews();
         TextView tvEmpty = new TextView(getContext());
-        tvEmpty.setText("지정된 조건의 보안 요소가 없습니다.");
+        tvEmpty.setText("조회된 조건에 해당하는 보안 기록이 없습니다.");
         tvEmpty.setTextSize(14);
         tvEmpty.setTextColor(Color.parseColor("#8B95A1"));
         tvEmpty.setGravity(Gravity.CENTER);
@@ -492,7 +515,7 @@ public class HomeFragment extends Fragment {
 
     private void connectWebSocket() {
         try {
-            String serverUrl = "ws://idontlivealone.onrender.com/audio-stream";
+            String serverUrl = "wss://idontlivealone.onrender.com/audio-stream";
             Request request = new Request.Builder().url(serverUrl).build();
 
             webSocket = new OkHttpClient().newWebSocket(request, new WebSocketListener() {
@@ -614,6 +637,7 @@ public class HomeFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        if (logsCall != null) logsCall.cancel();
         isRecording = false;
         stopAudioRecord();
         super.onDestroyView();

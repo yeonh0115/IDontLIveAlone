@@ -2,6 +2,7 @@ package com.example.smart_door_security_server;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -22,10 +23,13 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
     private final AudioStreamHandler audioStreamHandler;
     private final CameraWebSocketHandler cameraWebSocketHandler;
 
+    @Value("${app.storage-dir:./data}")
+    private String storageDir;
+
     // 1. 정적 리소스 설정 (/pictures/** 및 /uploads/** 경로 둘 다 매핑)
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String baseDir = System.getProperty("user.dir");
+        String baseDir = new File(storageDir).getAbsolutePath();
         
         // pictures 및 uploads 디렉토리 생성 보장
         File picturesDir = new File(baseDir + "/pictures/");
@@ -39,11 +43,11 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
 
         // /pictures/** 요청 처리
         registry.addResourceHandler("/pictures/**")
-                .addResourceLocations(picturesLocation);
+                .addResourceLocations(picturesLocation, new File("pictures").toURI().toString());
 
         // /uploads/** 요청 처리 (404 에러 방지)
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations(uploadsLocation, picturesLocation);
+                .addResourceLocations(uploadsLocation, new File("uploads").toURI().toString());
 
         System.out.println("[WebConfig] 📂 정적 리소스 로딩 디렉토리: " + baseDir);
         System.out.println("[WebConfig] 🔗 /pictures/ 및 /uploads/ 매핑 완료");

@@ -33,7 +33,7 @@
                 android:padding="12dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_chevron_left"
-                android:tint="#8B95A1"
+                app:tint="#8B95A1"
                 android:contentDescription="이전 달로 이동" />
 
             <TextView
@@ -55,7 +55,7 @@
                 android:padding="12dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/ic_chevron_right"
-                android:tint="#8B95A1"
+                app:tint="#8B95A1"
                 android:contentDescription="다음 달로 이동" />
         </LinearLayout>
 
@@ -114,6 +114,26 @@
             android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_report_load_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="12dp"
+        android:gravity="center"
+        android:accessibilityLiveRegion="polite"
+        android:text="리포트를 불러오고 있습니다."
+        android:textColor="#6B7280"
+        android:textSize="14sp" />
+
+    <Button
+        android:id="@+id/btn_retry_reports"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="20dp"
+        android:text="다시 불러오기"
+        android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_report_list"

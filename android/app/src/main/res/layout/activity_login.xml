@@ -37,7 +37,7 @@
             android:layout_height="56dp"
             android:layout_marginBottom="-14dp"
             android:src="@drawable/ic_lock_shackle"
-            android:tint="#3182F6"
+            app:tint="#3182F6"
             app:layout_constraintBottom_toTopOf="@id/img_lock_body"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>

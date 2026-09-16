@@ -88,5 +88,22 @@
                 android:text="얼굴 촬영 시작하기"
                 android:textSize="15sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_face_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityLiveRegion="polite"
+            android:textColor="#4E5968"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btn_retry_face_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="상태 다시 확인"
+            android:visibility="gone" />
     </LinearLayout>
 </androidx.cardview.widget.CardView>

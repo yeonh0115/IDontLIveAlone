@@ -35,3 +35,19 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# Local runtime state and credentials
+/data/
+/pictures/
+/uploads/
+.env
+.env.*
+!.env.example
+**/local.properties
+**/__pycache__/
+**/*.pyc
+raspberrypi/trainer/
+raspberrypi/facedata/
+raspberrypi/task_state/
+*.jks
+*.keystore

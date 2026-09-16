@@ -17,7 +17,9 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         try {
-            byte[] imageBytes = message.getPayload().array();
+            var payload = message.getPayload().asReadOnlyBuffer();
+            byte[] imageBytes = new byte[payload.remaining()];
+            payload.get(imageBytes);
             VideoStreamingController.updateFrameDirectly(imageBytes);
         } catch (Exception e) {
             System.err.println("[카메라 웹소켓 에러] 데이터 처리 중 예외 발생: " + e.getMessage());

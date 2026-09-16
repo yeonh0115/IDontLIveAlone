@@ -51,10 +51,6 @@
         <activity
             android:name="com.example.na_honja_ansanda.ui.main.MainActivity"
             android:exported="false"/>
-
-        <activity
-            android:name="com.example.na_honja_ansanda.ui.report.ReportListActivity"
-            android:exported="false" />
     </application>
 
 </manifest>

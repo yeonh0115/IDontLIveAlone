@@ -1,503 +1,417 @@
+"""Local face recognition and leased Render training jobs for one door Pi."""
+import hashlib
 import os
+from pathlib import Path
+import shutil
+import threading
+import time
+import uuid
+
 import cv2
 import numpy as np
 import requests
-import time
-import threading
-import urllib3
-import hashlib
-import gpiod
 
-# SSL 경고 로그 비활성화 및 세션 초기화
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-session = requests.Session()
-session.verify = False
+from pi_runtime import (
+    LatestFrame, Settings, TaskState, commit_model_and_samples, prepare_model_baseline,
+    recover_model_transaction, sync_directory, task_sample_directory, training_image_paths,
+)
 
-# ==========================================
-# [설정 구역] 환경에 맞춰 확인해 주세요
-# ==========================================
-RENDER_SERVER_URL = "https://idontlivealone.onrender.com"
-STREAM_URL = "http://192.168.137.115:5002/video_feed"              # 로컬 스트리밍 비디오 피드 주소
-MODEL_PATH = "trainer/trainer.yml"                                  # 학습된 모델 저장 경로
-MAP_FILE_PATH = "trainer/user_map.txt"                               # 문자열 ID <-> 정수 ID 매핑 테이블 경로
-FACEDATA_DIR = "facedata/"                                           # 원본 이미지 저장용 경로
+settings = Settings()
+MODEL_PATH = settings.data_dir / "trainer" / "trainer.yml"
+MAP_FILE_PATH = settings.data_dir / "trainer" / "user_map.txt"
+FACEDATA_DIR = settings.data_dir / "facedata"
+THRESHOLD = 85
+REQUIRED_CONSECUTIVE_SUCCESS = 4
+SOLENOID_PIN = 23
 
-THRESHOLD = 85                                                      # 얼굴 인식 허용 임계값 (작을수록 엄격)
-REQUIRED_CONSECUTIVE_SUCCESS = 4                                    # 연속 매칭 성공 횟수 기준
-SOLENOID_PIN = 23                                                   # GPIO 핀 번호
-
-# ==========================================
-# GPIO (gpiod v2) 초기화 구현
-# ==========================================
-is_raspberry_pi = False
-req = None
-
-try:
-    chip = gpiod.Chip('/dev/gpiochip0')
-    cfg = gpiod.LineSettings(direction=gpiod.line.Direction.OUTPUT)
-    req = chip.request_lines(config={SOLENOID_PIN: cfg})
-    req.set_values({SOLENOID_PIN: gpiod.line.Value.INACTIVE})
-    is_raspberry_pi = True
-    print(f"🔋 [gpiod v2] {SOLENOID_PIN}번 핀 제어권 획득 완료 (LOW 초기화)")
-except Exception as e:
-    print(f"⚠️ 하드웨어 초기화 실패 (시뮬레이션/가상 모드로 가동): {e}")
-
-# 글로벌 인식기 및 멀티스레드 제어용 락 선언
-recognizer = cv2.face.LBPHFaceRecognizer_create()
+frames = LatestFrame()
+stop_event = threading.Event()
 model_lock = threading.Lock()
-frame_lock = threading.Lock()
+cascade_lock = threading.Lock()
+gpio_busy = threading.Event()
+recognizer = None
+face_cascade = None
+gpio_request = None
+gpio_module = None
 
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-latest_frame = None
-is_processing = False
-running = True
-
-
-# ==========================================
-# ID 매핑 (String <-> Int) 고도화 모듈
-# ==========================================
 def get_or_create_int_id(string_user_id):
-    """ 문자열/UUID ID를 OpenCV LBPH가 사용하는 정수형 ID로 변환 후 보존 """
-    if not string_user_id:
-        return 0
-    hasher = hashlib.sha256(string_user_id.encode('utf-8'))
-    int_id = int(hasher.hexdigest(), 16) % 100000000 + 1
-    
-    os.makedirs(os.path.dirname(MAP_FILE_PATH), exist_ok=True)
-    mapping_exists = False
-    if os.path.exists(MAP_FILE_PATH):
-        try:
-            with open(MAP_FILE_PATH, "r", encoding="utf-8") as f:
-                for line in f:
-                    if f"{string_user_id}=" in line:
-                        mapping_exists = True
-                        break
-        except Exception as e:
-            print(f"🚨 매핑 파일 읽기 실패: {e}")
-            
-    if not mapping_exists:
-        try:
-            with open(MAP_FILE_PATH, "a", encoding="utf-8") as f:
-                f.write(f"{string_user_id}={int_id}\n")
-        except Exception as e:
-            print(f"🚨 매핑 파일 쓰기 실패: {e}")
-            
-    return int_id
+    string_user_id = str(string_user_id)
+    if not string_user_id or any(char in string_user_id for char in "=\r\n"):
+        raise ValueError("Invalid user_id")
+    mapping = read_user_mapping()
+    if string_user_id in mapping:
+        return mapping[string_user_id]
+    label = int(hashlib.sha256(string_user_id.encode("utf-8")).hexdigest(), 16) % 100000000 + 1
+    occupied = set(mapping.values())
+    while label in occupied:
+        label = label % 100000000 + 1
+    mapping[string_user_id] = label
+    MAP_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = MAP_FILE_PATH.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        handle.writelines(f"{key}={value}\n" for key, value in mapping.items())
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, MAP_FILE_PATH)
+    sync_directory(MAP_FILE_PATH.parent)
+    return label
 
+def read_user_mapping():
+    mapping = {}
+    if MAP_FILE_PATH.exists():
+        for line in MAP_FILE_PATH.read_text(encoding="utf-8").splitlines():
+            user_id, separator, label = line.partition("=")
+            if separator and label.isdigit():
+                mapping[user_id] = int(label)
+    return mapping
 
-def get_string_user_id(int_id):
-    """ 정수형 ID를 원본 문자열 ID로 변환 """
-    pure_id = int(int_id)
-    if os.path.exists(MAP_FILE_PATH):
-        try:
-            with open(MAP_FILE_PATH, "r", encoding="utf-8") as f:
-                for line in f:
-                    parts = line.strip().split("=")
-                    if len(parts) == 2 and parts[1] == str(pure_id):
-                        return parts[0]
-        except Exception as e:
-            print(f"🚨 매핑 데이터 역변환 오류: {e}")
+def get_string_user_id(label):
+    for user_id, stored_label in read_user_mapping().items():
+        if stored_label == int(label):
+            return user_id
     return "Unknown"
 
-
-# ==========================================
-# 모델 파일 제어 및 예측 로직
-# ==========================================
-def safe_load_model():
-    """ 메모리 크래시 없이 안면인식 모델 동기화 실행 """
-    global recognizer
-    with model_lock:
-        if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 100:
-            try:
-                recognizer.read(MODEL_PATH)
-                print(f"🔄 [안면 인식 시스템] 최신 AI 모델 동기화 완료: {MODEL_PATH}")
-                return True
-            except Exception as e:
-                print(f"🚨 [모델 로딩 에러] 파일이 손상되었거나 열 수 없습니다: {e}")
-                return False
-        else:
-            print("[WARNING] 기존 학습 모델이 없습니다. 최초 학습(TRAIN) 완료 전까지 인식 작동이 일시 대기 상태로 작동합니다.")
-            return False
-
-
-# 시스템 기동 즉시 초기화 로드
-safe_load_model()
-
-
-# ==========================================
-# GPIO 제어 스레드
-# ==========================================
-def trigger_face_signal(user_name):
-    """ 인식 성공 시 3초간 솔레노이드 제어 및 원상 복구 """
-    global is_processing, req
-    try:
-        print(f"🔓 [FPGA 신호 발생] 안면인식 최종 인증 성공: {user_name} -> {SOLENOID_PIN}번 핀 HIGH (3초 유지)")
-        if is_raspberry_pi and req:
-            req.set_values({SOLENOID_PIN: gpiod.line.Value.ACTIVE})
-            
-        time.sleep(3)
-        
-        if is_raspberry_pi and req:
-            req.set_values({SOLENOID_PIN: gpiod.line.Value.INACTIVE})
-        print("🔒 [FPGA 신호 종료] 3초 경과 -> LOW 원상 복구 완료")
-    except Exception as e:
-        print(f"🚨 솔레노이드 제어부 스레드 내부 오작동: {e}")
-        if is_raspberry_pi and req:
-            try:
-                req.set_values({SOLENOID_PIN: gpiod.line.Value.INACTIVE})
-            except:
-                pass
-    finally:
-        is_processing = False
-
-
-# ==========================================
-# 비디오 프레임 캡처 스레드
-# ==========================================
-def frame_reader():
-    """ 끊김 없는 실시간 프레임 수신 및 자동 재연결 스레드 """
-    global latest_frame, running
-    cap = cv2.VideoCapture(STREAM_URL)
-    failed_count = 0
-    
-    while running:
-        ret, frame = cap.read()
-        if not ret:
-            failed_count += 1
-            if failed_count > 30:
-                print("🚨 스트림 연결 단절 발생. 재연결 시도 중...")
-                cap.release()
-                cap = cv2.VideoCapture(STREAM_URL)
-                failed_count = 0
-            time.sleep(0.1)
-            continue
-            
-        failed_count = 0
-        with frame_lock:
-            latest_frame = frame
-
-
-# ==========================================
-# 실시간 안면 인식 메인 스레드
-# ==========================================
-def real_time_recognition_loop():
-    """ 상시 안면 인식 분석 루프 """
-    global latest_frame, is_processing, running
-    consecutive_count = 0
-    last_id = -1
-    
-    print("🚀 실시간 안면 인식 상시 가동 루프 작동 시작...")
-    
-    while running:
-        frame = None
-        with frame_lock:
-            if latest_frame is not None:
-                frame = latest_frame
-                latest_frame = None  # 소모 후 초기화
-                
-        if frame is None:
-            time.sleep(0.005)
-            continue
-            
-        # 연산 성능 보장을 위해 프레임 사이즈 축소
-        small_frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
-        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-        
-        # 가벼운 감지 수행
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.1, 
-            minNeighbors=5, 
-            minSize=(40, 40)
-        )
-        
-        current_label = -1
-        
-        # 인식 연산과 웹서버를 통한 모델 학습 덮어쓰기 간 충돌 방지를 위한 Lock 적용
-        with model_lock:
-            # 학습 모델 파일이 존재하는 경우에만 예측 연산 가동
-            if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 100:
-                for (x, y, w, h) in faces:
-                    try:
-                        face_roi = gray[y:y+h, x:x+w]
-                        face_roi = cv2.resize(face_roi, (200, 200))
-                        face_roi = cv2.equalizeHist(face_roi)
-                        
-                        label, confidence = recognizer.predict(face_roi)
-                        user_name = get_string_user_id(label)
-                        
-                        print(f"🔎 감지: {user_name} | 수치: {confidence:.2f} | GPIO 상태: {'HIGH' if is_processing else 'LOW'}")
-                        
-                        if user_name != "Unknown" and confidence < THRESHOLD:
-                            current_label = label
-                            break
-                    except Exception as pred_err:
-                        # 모델 파일 재동기화 도중 예외 회피
-                        break
-                        
-        # 연속 성공 검증 알고리즘
-        if current_label != -1 and current_label == last_id:
-            consecutive_count += 1
-        elif current_label != -1:
-            consecutive_count = 1
-            last_id = current_label
-        else:
-            consecutive_count = 0
-            last_id = -1
-            
-        # 최종 통과 트리거 발동
-        if consecutive_count >= REQUIRED_CONSECUTIVE_SUCCESS:
-            if not is_processing:
-                is_processing = True
-                user_name = get_string_user_id(last_id)
-                # 솔레노이드 구동 스레드 분기 실행
-                threading.Thread(target=trigger_face_signal, args=(user_name,), daemon=True).start()
-            consecutive_count = 0
-            
-        time.sleep(0.01)
-
-
-# ==========================================
-# 클라우드 REST API 폴링 제어 스레드
-# ==========================================
-def process_train(task_data):
-    """ Render로부터 유저 정보 및 수집한 이미지를 받아 기존 모델 손상 없이 증분(Incremental) 학습 처리 """
-    global recognizer
-    with model_lock:
+def initialize():
+    global recognizer, face_cascade, gpio_request, gpio_module
+    FACEDATA_DIR.mkdir(parents=True, exist_ok=True)
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    recover_model_transaction(MODEL_PATH)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    if face_cascade.empty():
+        raise RuntimeError("OpenCV Haar face detector could not be loaded")
+    if MODEL_PATH.exists():
         try:
-            string_user_id = task_data.get("user_id")
-            images_bytes_list = task_data.get("images", [])
-            
-            if not string_user_id or not images_bytes_list:
-                return {"status": "error", "message": "유효하지 않은 유저 식별자 혹은 유실 데이터셋"}
-                
-            int_user_id = get_or_create_int_id(string_user_id)
-            print(f"[INFO] 🧠 문자열 ID '{string_user_id}' -> 정수형 ID '{int_user_id}' 연계 생성")
-            
-            user_dir = os.path.join(FACEDATA_DIR, str(int_user_id))
-            os.makedirs(user_dir, exist_ok=True)
-            
-            # 1. 파일 저장 및 전처리
-            new_face_samples = []
-            new_ids = []
-            
-            for idx, img_bytes in enumerate(images_bytes_list):
-                try:
-                    nparr = np.frombuffer(img_bytes, np.uint8)
-                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    if img is not None:
-                        gray_temp = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                        faces = face_cascade.detectMultiScale(gray_temp, 1.3, 5)
-                        
-                        # 전처리 얼굴 영역 크롭 및 정형화
-                        if len(faces) > 0:
-                            (x, y, w, h) = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
-                            face_img = gray_temp[y:y+h, x:x+w]
-                        else:
-                            face_img = gray_temp
-                        
-                        face_img = cv2.resize(face_img, (200, 200))
-                        face_img = cv2.equalizeHist(face_img)
-                        
-                        # 물리 파일 저장 (백업용)
-                        cv2.imwrite(os.path.join(user_dir, f"{idx}.jpg"), face_img)
-                        
-                        # 학습 배열 적재
-                        new_face_samples.append(face_img)
-                        new_ids.append(int_user_id)
-                except Exception as inner_e:
-                    print(f"[DATA INTEGRITY WARNING] 로컬 이미지 가공 실패: {inner_e}")
-            
-            if len(new_face_samples) == 0:
-                return {"status": "error", "message": "학습 가능한 신규 얼굴 데이터가 검출되지 않았습니다."}
-                
-            # 2. 기존 학습 모델 로드 후 증분 학습(update) 진행
-            new_recognizer = cv2.face.LBPHFaceRecognizer_create()
-            
-            # 기존에 이미 학습 완료된 파일이 디스크에 존재하는지 판별
-            if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 100:
-                try:
-                    print("[INFO] 기존 모델을 불러와 점진적 업데이트(Update)를 시작합니다.")
-                    new_recognizer.read(MODEL_PATH)
-                    new_recognizer.update(new_face_samples, np.array(new_ids))
-                except Exception as update_err:
-                    print(f"⚠️ 기존 모델 업데이트 실패, 새롭게 전체 데이터 빌드업 시도: {update_err}")
-                    # 업데이트 실패 시 차선책으로 디렉토리 완전 재스캔 학습
-                    return rebuild_model_from_scratch()
-            else:
-                # 모델 파일이 없는 경우, 최초 학습(train)을 진행
-                print("[INFO] 기존 모델이 없으므로 최초 학습(Train)을 시작합니다.")
-                new_recognizer.train(new_face_samples, np.array(new_ids))
-            
-            # 3. 신규 가중치 파일 덤프 및 인스턴스 핫 스왑
-            os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-            new_recognizer.write(MODEL_PATH)
-            
-            recognizer = new_recognizer
-            print(f"[SUCCESS] 🎉 점진적 누적 학습 성공! 추가된 샘플 수: {len(new_face_samples)}")
-            return {"status": "success", "message": f"유저 {string_user_id} 추가 및 실시간 모델 누적 업데이트 완료"}
-            
-        except Exception as e:
-            return {"status": "error", "message": f"점진적 업데이트 처리 도중 오류: {str(e)}"}
+            recognizer = cv2.face.LBPHFaceRecognizer_create()
+            recognizer.read(str(MODEL_PATH))
+        except Exception as error:
+            recognizer = None
+            print(f"[face] Existing model could not be loaded: {error}", flush=True)
+    try:
+        import gpiod
+        gpio_module = gpiod
+        with gpiod.Chip("/dev/gpiochip0") as chip:
+            config = gpiod.LineSettings(direction=gpiod.line.Direction.OUTPUT, output_value=gpiod.line.Value.INACTIVE)
+            gpio_request = chip.request_lines(config={SOLENOID_PIN: config})
+    except Exception as error:
+        gpio_request = None
+        print(f"[face] GPIO unavailable; recognition only: {error}", flush=True)
 
-
-def rebuild_model_from_scratch():
-    """ 예외 상황 발생 시 facedata 폴더 전체를 재스캔하여 완전 재학습하는 세이프티 메서드 """
-    global recognizer
-    face_samples = []
-    ids = []
-    
-    if not os.path.exists(FACEDATA_DIR):
-        return {"status": "error", "message": "학습 데이터 백업 폴더가 존재하지 않습니다."}
-
-    for u_id in os.listdir(FACEDATA_DIR):
-        u_dir = os.path.join(FACEDATA_DIR, u_id)
-        if not os.path.isdir(u_dir) or not u_id.isdigit():
-            continue
-            
-        for img_name in os.listdir(u_dir):
-            img_path = os.path.join(u_dir, img_name)
+def trigger_face_signal(user_id):
+    try:
+        if gpio_request is not None:
+            gpio_request.set_values({SOLENOID_PIN: gpio_module.line.Value.ACTIVE})
+        print(f"[face] Recognized {user_id}; GPIO {SOLENOID_PIN} active for 3 seconds", flush=True)
+        stop_event.wait(3)
+    finally:
+        if gpio_request is not None:
             try:
-                gray_img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if gray_img is not None:
-                    # 크기 정형화 보장
-                    gray_img = cv2.resize(gray_img, (200, 200))
-                    gray_img = cv2.equalizeHist(gray_img)
-                    face_samples.append(gray_img)
-                    ids.append(int(u_id))
-            except Exception as io_err:
-                print(f"[DATA INTEGRITY WARNING] {img_path} 스킵: {io_err}")
-    
-    if len(face_samples) == 0:
-        return {"status": "error", "message": "전체 복구 학습을 수행할 데이터 백업본이 없습니다."}
-        
-    temp_recognizer = cv2.face.LBPHFaceRecognizer_create()
-    temp_recognizer.train(face_samples, np.array(ids))
-    temp_recognizer.write(MODEL_PATH)
-    
-    recognizer = temp_recognizer
-    print(f"[SUCCESS] 🛠️ 전체 데이터셋 재구성 학습 완료. 총 복구 샘플: {len(face_samples)}")
-    return {"status": "success", "message": f"전체 데이터셋 기준 전면 갱신 및 완전 복구 완료"}
+                gpio_request.set_values({SOLENOID_PIN: gpio_module.line.Value.INACTIVE})
+            except Exception as error:
+                print(f"[face] GPIO reset failed: {error}", flush=True)
+        gpio_busy.clear()
 
+def frame_reader():
+    capture = None
+    failures = 0
+    try:
+        while not stop_event.is_set():
+            if capture is None:
+                capture = cv2.VideoCapture(settings.stream_url)
+            success, frame = capture.read()
+            if success:
+                frames.put(frame)
+                failures = 0
+                continue
+            failures += 1
+            if failures > 30:
+                frames.clear()
+                capture.release()
+                capture = None
+                failures = 0
+                print("[face] Camera stream unavailable; reconnecting", flush=True)
+            stop_event.wait(0.1)
+    finally:
+        frames.clear()
+        if capture is not None:
+            capture.release()
+
+def detect_faces(gray, scale_factor=1.1, min_size=(40, 40)):
+    with cascade_lock:
+        return face_cascade.detectMultiScale(gray, scaleFactor=scale_factor, minNeighbors=5, minSize=min_size)
+
+def normalize_face(gray, face):
+    x, y, width, height = face
+    return cv2.equalizeHist(cv2.resize(gray[y:y + height, x:x + width], (200, 200)))
+
+def predict_frame(frame, reduce_size=False):
+    if reduce_size:
+        frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = detect_faces(gray)
+    if len(faces) == 0:
+        return {"status": "error", "message": "No face detected"}
+    with model_lock:
+        if recognizer is None:
+            return {"status": "error", "message": "No trained model"}
+        for face in sorted(faces, key=lambda item: item[2] * item[3], reverse=True):
+            label, confidence = recognizer.predict(normalize_face(gray, face))
+            user_id = get_string_user_id(label)
+            if user_id != "Unknown" and confidence < THRESHOLD:
+                return {"status": "success", "message": "Registered face recognized", "detected_id": user_id, "confidence": round(float(confidence), 2)}
+    return {"status": "error", "message": "Unregistered face"}
+
+def real_time_recognition_loop():
+    last_sequence = -1
+    last_id = None
+    consecutive = 0
+    while not stop_event.is_set():
+        frame, sequence = frames.get()
+        if frame is None:
+            last_id, consecutive = None, 0
+            stop_event.wait(0.01)
+            continue
+        if sequence == last_sequence:
+            stop_event.wait(0.01)
+            continue
+        last_sequence = sequence
+        try:
+            result = predict_frame(frame, reduce_size=True)
+            user_id = result.get("detected_id") if result["status"] == "success" else None
+            consecutive = consecutive + 1 if user_id is not None and user_id == last_id else (1 if user_id else 0)
+            last_id = user_id
+            if consecutive >= REQUIRED_CONSECUTIVE_SUCCESS:
+                if not gpio_busy.is_set():
+                    gpio_busy.set()
+                    threading.Thread(target=trigger_face_signal, args=(user_id,), daemon=True).start()
+                consecutive = 0
+        except Exception as error:
+            last_id, consecutive = None, 0
+            print(f"[face] Recognition failed: {error}", flush=True)
+            stop_event.wait(1)
+
+class LeaseHeartbeat:
+    def __init__(self, task, claimed_at=None, clock=time.monotonic):
+        self.task = task
+        self.clock = clock
+        self.deadline = (clock() if claimed_at is None else claimed_at) + 120
+        self.deadline_lock = threading.Lock()
+        self.stopped = threading.Event()
+        self.lost = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stopped.set()
+        self.thread.join(timeout=7)
+
+    def assert_owned(self):
+        with self.deadline_lock:
+            expired = self.clock() >= self.deadline
+        if self.lost.is_set() or expired:
+            raise RuntimeError("Task lease was superseded; processing stopped")
+
+    def _run(self):
+        with requests.Session() as heartbeat_session:
+            while not self.stopped.wait(30):
+                try:
+                    request_started = self.clock()
+                    response = heartbeat_session.post(
+                        settings.api_url(f"/api/face/tasks/{self.task['task_id']}/lease"),
+                        json={"device_id": settings.device_id, "lease_token": self.task["lease_token"]},
+                        timeout=5,
+                    )
+                    if response.status_code == 409:
+                        self.lost.set()
+                        return
+                    if response.status_code == 200:
+                        with self.deadline_lock:
+                            self.deadline = request_started + 120
+                    else:
+                        print(f"[task] Lease renewal returned HTTP {response.status_code}", flush=True)
+                except requests.RequestException as error:
+                    print(f"[task] Lease renewal unavailable: {error}", flush=True)
+
+def process_train(task, session, lease):
+    """Rebuild baseline + unique task samples, even after interrupted acknowledgements."""
+    global recognizer
+    task_id = task["task_id"]
+    user_id = task.get("user_id")
+    if not user_id:
+        raise ValueError("TRAIN requires user_id")
+    recover_model_transaction(MODEL_PATH)
+    lease.assert_owned()
+    baseline = prepare_model_baseline(MODEL_PATH)
+    int_user_id = get_or_create_int_id(user_id)
+    destination = task_sample_directory(FACEDATA_DIR, int_user_id, task_id)
+    staging = None
+    if not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        staging = destination.parent / (".pending_" + uuid.uuid4().hex)
+        staging.mkdir()
+        try:
+            urls = task.get("image_urls", [])
+            if not isinstance(urls, list) or not urls:
+                raise ValueError("TRAIN requires image_urls")
+            samples_saved = 0
+            for index, url in enumerate(urls):
+                lease.assert_owned()
+                response = session.get(settings.api_url(url), timeout=10)
+                response.raise_for_status()
+                image = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
+                if image is None:
+                    raise ValueError(f"Training image {index} could not be decoded")
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                detected = detect_faces(gray, scale_factor=1.3, min_size=(20, 20))
+                if len(detected) == 0:
+                    raise ValueError(f"Training image {index} contains no detectable face")
+                largest = max(detected, key=lambda item: item[2] * item[3])
+                normalized = normalize_face(gray, largest)
+                if not cv2.imwrite(str(staging / f"{index}.jpg"), normalized):
+                    raise OSError("Could not persist training image")
+                with (staging / f"{index}.jpg").open("r+b") as handle:
+                    os.fsync(handle.fileno())
+                samples_saved += 1
+            if samples_saved == 0:
+                raise ValueError("No usable face samples")
+            lease.assert_owned()
+            sync_directory(staging)
+        except Exception:
+            if staging.exists():
+                shutil.rmtree(staging)
+            raise
+    images, labels = [], []
+    for label, path in training_image_paths(FACEDATA_DIR):
+        # Existing model is the authoritative baseline; avoid adding legacy files twice.
+        if baseline is not None and not path.relative_to(FACEDATA_DIR / str(label)).parts[0].startswith("task_"):
+            continue
+        gray = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        if gray is None:
+            raise ValueError(f"Stored training image could not be decoded: {path.name}")
+        images.append(cv2.equalizeHist(cv2.resize(gray, (200, 200))))
+        labels.append(label)
+    if staging is not None:
+        for path in sorted(staging.glob("*.jpg")):
+            gray = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if gray is None:
+                raise ValueError(f"Pending training image could not be decoded: {path.name}")
+            images.append(cv2.equalizeHist(cv2.resize(gray, (200, 200))))
+            labels.append(int_user_id)
+    if not images:
+        raise ValueError("No saved face samples are available")
+    new_recognizer = cv2.face.LBPHFaceRecognizer_create()
+    if baseline is not None:
+        new_recognizer.read(str(baseline))
+        new_recognizer.update(images, np.array(labels, dtype=np.int32))
+    else:
+        new_recognizer.train(images, np.array(labels, dtype=np.int32))
+    temporary = MODEL_PATH.with_name("trainer." + uuid.uuid4().hex + ".yml")
+    try:
+        new_recognizer.write(str(temporary))
+        with temporary.open("r+b") as handle:
+            os.fsync(handle.fileno())
+        lease.assert_owned()
+        with model_lock:
+            lease.assert_owned()
+            commit_model_and_samples(MODEL_PATH, temporary, staging, destination, lease.assert_owned)
+            recognizer = new_recognizer
+    finally:
+        temporary.unlink(missing_ok=True)
+        if staging is not None and staging.exists():
+            shutil.rmtree(staging)
+    return {"status": "success", "message": f"User {user_id} trained; {len(images)} task/legacy samples rebuilt"}
 
 def watch_render_server():
-    """ 웹 대시보드 명령 상시 수집 및 동기화 무한 스레드 """
-    print("[START] 📡 클라우드 작업 제어 및 동기화 모듈 대기 개시...")
-    global running
-    
-    while running:
-        try:
-            response = session.get(f"{RENDER_SERVER_URL}/api/get-task", timeout=5)
-            if response.status_code == 200:
-                try:
-                    task = response.json()
-                except ValueError:
-                    time.sleep(1)
-                    continue
+    state = TaskState(settings.data_dir / "task_state")
+    with requests.Session() as session:
+        def post_result(payload):
+            response = session.post(settings.api_url("/api/result"), json=payload, timeout=5)
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            return response.status_code, body
 
-                task_id = task.get("task_id")
-                task_type = task.get("type")
-                
-                print(f"\n[TASK] 📥 명령 도달 -> ID: {task_id} | 유형: {task_type}")
-                result_payload = {"task_id": str(task_id), "type": str(task_type), "result": {}}
-                
-                # 예측 명령 수집 분기
-                if task_type == "PREDICT":
-                    # 상시 백그라운드 프레임 한 장 획득하여 단발적 API 반환용 예측 수행
-                    with frame_lock:
-                        frame_to_predict = latest_frame
-                    
-                    if frame_to_predict is not None:
-                        gray = cv2.cvtColor(frame_to_predict, cv2.COLOR_BGR2GRAY)
-                        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-                        if len(faces) == 0:
-                            result_payload["result"] = {"status": "fail", "message": "얼굴 영역을 감지하지 못했습니다."}
-                        else:
-                            (x, y, w, h) = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
-                            with model_lock:
-                                if os.path.exists(MODEL_PATH):
-                                    id_, confidence = recognizer.predict(gray[y:y+h, x:x+w])
-                                    user_name = get_string_user_id(id_)
-                                    if confidence < THRESHOLD:
-                                        result_payload["result"] = {
-                                            "status": "success",
-                                            "detected_id": user_name,
-                                            "confidence": round(float(confidence), 2)
-                                        }
-                                    else:
-                                        result_payload["result"] = {"status": "fail", "message": "미등록자 검출"}
-                                else:
-                                    result_payload["result"] = {"status": "error", "message": "인식 모델 미비"}
-                    else:
-                        result_payload["result"] = {"status": "fail", "message": "카메라 프레임 비가용"}
-                
-                # 실시간 무중단 갱신(학습) 분기
-                elif task_type == "TRAIN":
-                    user_id = task.get("user_id")
-                    urls = task.get("image_urls", [])
-                    images_bytes = []
-                    
-                    for url in urls:
+        def log_delivery(task, delivery):
+            if delivery == "stale":
+                print(f"[task] HTTP 409: stale lease result quarantined for task {task['task_id']}", flush=True)
+            elif delivery.startswith("permanent:"):
+                status = delivery.split(":", 1)[1]
+                print(f"[task] HTTP {status}: permanently rejected result quarantined unchanged for task {task['task_id']}", flush=True)
+            elif delivery == "forbidden":
+                print(f"[task] HTTP 403 for task {task['task_id']}: check DEVICE_ID/server permissions; saved result retained, polling paused", flush=True)
+
+        def flush_pending():
+            for path in state.pending():
+                task = state.read(path)
+                with LeaseHeartbeat(task):
+                    while not stop_event.is_set():
                         try:
-                            clean_url = url.replace("https://", "HTTPS://").replace("//", "/").replace("HTTPS:/", "https://")
-                            img_res = session.get(clean_url, timeout=7)
-                            if img_res.status_code == 200 and img_res.content:
-                                images_bytes.append(img_res.content)
-                                print(f"[DOWNLOAD SUCCESS] 원본 리소스 획득 완료: {clean_url}")
-                        except Exception as dl_err:
-                            print(f"⚠️ 이미지 다운로드 실패 ({url}): {dl_err}")
-                            continue
-                    
-                    if len(images_bytes) > 0:
-                        train_result = process_train({"user_id": user_id, "images": images_bytes})
-                        result_payload["result"] = train_result
+                            delivery = state.deliver(path, post_result)
+                            log_delivery(task, delivery)
+                            if delivery not in ("retry", "forbidden"):
+                                break
+                            if delivery == "retry":
+                                print(f"[task] Result not acknowledged for {task['task_id']}; retrying", flush=True)
+                        except requests.RequestException as error:
+                            print(f"[task] Saved result delivery unavailable: {error}", flush=True)
+                        stop_event.wait(3)
                     else:
-                        result_payload["result"] = {"status": "error", "message": "리소스 획득 실패"}
-                
-                # 결과 전송 보고
-                try:
-                    session.post(f"{RENDER_SERVER_URL}/api/result", json=result_payload, timeout=5)
-                except Exception as post_err:
-                    print(f"🚨 결과 전송 유실: {post_err}")
-                    
-            elif response.status_code == 204:
-                pass
-                
-        except Exception as e:
-            time.sleep(3)
-            continue
-            
-        time.sleep(1)
+                        return False
+            return True
 
+        while not stop_event.is_set():
+            try:
+                if not flush_pending():
+                    stop_event.wait(3)
+                    continue
+                claim_started = time.monotonic()
+                response = session.get(settings.api_url("/api/get-task"), params=settings.task_params(), timeout=5)
+                if response.status_code == 204:
+                    stop_event.wait(1)
+                    continue
+                response.raise_for_status()
+                task = response.json()
+                if not task.get("task_id") or not task.get("lease_token"):
+                    raise ValueError("Task response is missing task_id or lease_token")
+                task_type = task.get("type")
+                with LeaseHeartbeat(task, claimed_at=claim_started) as lease:
+                    try:
+                        if task_type == "TRAIN":
+                            result = state.run_once(task["task_id"], lambda: process_train(task, session, lease))
+                        elif task_type == "PREDICT":
+                            frame, _ = frames.get()
+                            result = predict_frame(frame) if frame is not None else {"status": "error", "message": "Camera frame unavailable"}
+                        else:
+                            result = {"status": "error", "message": "Unsupported task type"}
+                    except Exception as error:
+                        result = {"status": "error", "message": str(error)}
+                    payload = {
+                        "task_id": str(task["task_id"]), "type": task_type,
+                        "device_id": settings.device_id, "lease_token": task["lease_token"], "result": result,
+                    }
+                    path = state.queue(payload)
+                    delivery = state.deliver(path, post_result)
+                    log_delivery(task, delivery)
+            except Exception as error:
+                print(f"[task] Waiting to retry: {error}", flush=True)
+                stop_event.wait(3)
+            stop_event.wait(1)
 
-# ==========================================
-# 통합 시스템 진입점 (Entry Point)
-# ==========================================
 if __name__ == "__main__":
-    os.makedirs(FACEDATA_DIR, exist_ok=True)
-    os.makedirs("trainer", exist_ok=True)
-    
-    # 1. 스트리밍 프레임 수집 스레드 실행
-    reader_thread = threading.Thread(target=frame_reader, daemon=True)
-    reader_thread.start()
-    
-    # 2. 클라우드 API 동기화 및 학습 제어 스레드 실행
-    polling_thread = threading.Thread(target=watch_render_server, daemon=True)
-    polling_thread.start()
-    
-    # 3. 실시간 안면 인식 및 GPIO 핀 감시 메인 스레드 실행 (메인스레드 유지)
+    initialize()
+    threading.Thread(target=frame_reader, daemon=True).start()
+    threading.Thread(target=watch_render_server, daemon=True).start()
     try:
         real_time_recognition_loop()
     except KeyboardInterrupt:
-        print("\n👋 프로그램을 안전하게 종료합니다.")
+        pass
     finally:
-        running = False
-        if is_raspberry_pi and req:
+        stop_event.set()
+        if gpio_request is not None:
             try:
-                req.set_values({SOLENOID_PIN: gpiod.line.Value.INACTIVE})
-                req.release()
-                print("🔌 GPIO 라인 제어권이 안전하게 반환되었습니다.")
-            except Exception as release_err:
-                print(f"⚠️ GPIO 제어권 해제 중 오류: {release_err}")
-        print("🧹 시스템 가용 리소스 정리를 정상적으로 마쳤습니다.")
+                gpio_request.set_values({SOLENOID_PIN: gpio_module.line.Value.INACTIVE})
+            finally:
+                gpio_request.release()

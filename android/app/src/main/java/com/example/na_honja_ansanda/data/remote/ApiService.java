@@ -1,6 +1,7 @@
 package com.example.na_honja_ansanda.data.remote;
 
 import com.example.na_honja_ansanda.data.model.IntegratedLog;
+import com.example.na_honja_ansanda.data.model.FaceTaskResponse;
 import com.example.na_honja_ansanda.data.model.ReportResponse;
 import com.example.na_honja_ansanda.data.model.User;
 import com.example.na_honja_ansanda.dto.DoorLockRequest;
@@ -35,12 +36,15 @@ public interface ApiService {
 
     @Multipart
     @POST("api/face/register")
-    Call<ResponseBody> registerFace(
+    Call<FaceTaskResponse> registerFace(
             @Part("userId") RequestBody userId,
             @Part MultipartBody.Part file1,
             @Part MultipartBody.Part file2,
             @Part MultipartBody.Part file3
     );
+
+    @GET("api/face/tasks/{taskId}")
+    Call<FaceTaskResponse> getFaceTask(@Path("taskId") String taskId, @Query("userId") String userId);
 
     // SQL 스키마 명세에 맞춰 @GET 엔드포인트와 리턴 데이터 타입을 IntegratedLog로 완전히 묶어 최적화했습니다.
     @GET("api/logs")
