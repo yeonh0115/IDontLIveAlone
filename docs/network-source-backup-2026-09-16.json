@@ -1,0 +1,18 @@
+[
+  {
+    "name": "DB_security.py",
+    "original_sha256": "84c033c8dc75bc68439c17e73476a95d7b133956e9bc8b206e715167ef9355d4",
+    "configuration_expressions_replaced": 6,
+    "original_secret_values_checked": 1,
+    "original_secret_values_remaining": 0,
+    "format": "AST-rendered original logic; all DB connection configuration and camera host use environment variables"
+  },
+  {
+    "name": "report1.py",
+    "original_sha256": "b664d0889ca2525b65fb9b68bc40c3560d6092bf0966c08a5eb8837a32ac3a71",
+    "configuration_expressions_replaced": 6,
+    "original_secret_values_checked": 2,
+    "original_secret_values_remaining": 0,
+    "format": "AST-rendered original logic; all DB connection configuration and camera host use environment variables"
+  }
+]
