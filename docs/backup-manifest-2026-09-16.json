@@ -418,5 +418,13 @@
   {
     "path": "raspberrypi/fin_face.py",
     "sha256": "7ea3d0827b69b74eeb2e587daa9ef33743d7c06e08220dfda8ee1cf005830f57"
+  },
+  {
+    "path": "android/gradle/libs.versions.toml",
+    "sha256": "dc9568d46912db0d41ec45fd9da35debb39abae07e7c46014ed1f359b06e412d"
+  },
+  {
+    "path": "android/app/.gitignore",
+    "sha256": "5c3174b74edc6f2b9e0743594b8bd3c7f31e4f4405758cc9872b3fe1de1d28b4"
   }
 ]
