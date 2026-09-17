@@ -17,6 +17,9 @@ public class CameraHandshakeInterceptor implements HandshakeInterceptor {
         try {
             var camera = devices.require(authorization, DeviceRole.CAMERA, null);
             attributes.put("cameraOwner", camera.userNo()); attributes.put("cameraDevice", camera.deviceId());
+            // Servlet request headers are recycled after the WebSocket upgrade. Keep only
+            // a credential hash for subsequent revocation checks, never the bearer secret.
+            attributes.put("cameraTokenHash", TokenSecrets.hash(TokenSecrets.bearer(authorization)));
             return true;
         } catch (ResponseStatusException failure) {
             response.setStatusCode(failure.getStatusCode()); return false;

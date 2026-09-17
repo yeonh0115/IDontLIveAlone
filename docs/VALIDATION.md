@@ -2,7 +2,7 @@
 
 | 검사 | 결과 |
 | --- | --- |
-| 서버 `clean build` | UTC·Asia/Seoul 각각 48개 통과, 실패·오류·skip 0, 실행 JAR 생성 |
+| 서버 `clean build` | 최종 UTC 53개 통과, 실패·오류·skip 0, 실행 JAR 생성. 앞선 날짜 수정은 UTC·Asia/Seoul 각각 48개 검증 |
 | Android `assembleDebug testDebugUnitTest lintDebug` | 빌드 성공, 14개 통과, lint 오류 0·경고 194 |
 | Pi A 모의 테스트 | 33개 통과 |
 | Pi B 모의 테스트 | 13개 통과 |
@@ -40,7 +40,19 @@ Pi A SD의 장치 번호·USB 일련번호·크기·파티션과 원본 cmdline 
 
 ## 산출물 해시
 
-- 서버 JAR(56,960,792바이트): `82ccc07c6173c4a90ef3b155c954ade2f25bea2b56ab0df5d5ac1da1ca5f9e7d`
+- 서버 JAR(56,961,744바이트): `d1fab324a0a24313ecff3404cee52e1424955ea9bf6cef514902a2f0ea4172d1`
 - Android debug APK: `906880a91c6dd678b032263add6977f4d135496e587a4115bbd503dfd581b9d1`
 
 Docker 실행기가 없어 로컬 컨테이너 빌드는 하지 않았고, Render의 실제 Linux 컨테이너 빌드 성공으로 확인했습니다. 상세 적용 순서는 [DEPLOYMENT.md](DEPLOYMENT.md)에 있습니다.
+
+## 현장 영상 연결 후속 진단
+
+사용자가 새 앱의 CAMERA 연결을 완료했습니다. 준비한 장치와 서버의 연결 정보가 일치하며, Pi에서 Render `/healthz`와 로컬 `/snapshot`이 모두 HTTP 200이라고 확인했습니다. 로컬 촬영과 HTTPS 접속은 가능하지만 앱의 영상과 보안 기록이 표시되지 않았습니다.
+
+실제 Render 로그에서 인증된 카메라 WebSocket이 연결 직후 1011로 종료되는 현상을 확인했습니다. 로컬 실제 WebSocket에서도 같은 문제를 재현했고, 첫 프레임 처리 중 재활용된 Tomcat HTTP 요청 헤더를 다시 읽어 `RequestFacade.checkFacade`의 `IllegalStateException`이 발생했습니다. 기존 단위 검사만으로는 실제 WebSocket 업그레이드 이후의 수명 차이를 검증하지 못했습니다.
+
+또한 운영 환경의 기본 Open EntityManager in View 설정과 끝나지 않는 영상 HTTP 요청이 DB 연결을 계속 점유하여 Hikari 연결 10개가 소진됐습니다. 테스트 환경은 해당 설정을 이미 꺼 둬 운영 차이를 놓쳤습니다. 서버 재시작 후 `/healthz` 200을 확인했고, 재발 방지 수정과 실제 HTTP/WebSocket 회귀 검사를 진행합니다.
+
+수정은 WebSocket 연결 시 장치 ID·소유자·토큰 해시를 보존해 이후 DB에서 권한을 재검증하고, 재활용된 HTTP 요청 헤더는 참조하지 않도록 합니다. 토큰 변경·기기 삭제·연결 해제는 기존대로 전송 권한을 종료합니다. 운영 환경에 `spring.jpa.open-in-view=false`를 명시하며, 프레임이 없는 영상 요청은 15초 뒤 종료합니다. Spring 7의 기본 non-flushing 출력 래퍼로 작은 프레임 전송이 지연되는 문제는 활성 비동기 Servlet 응답을 프레임마다 flush해 수정했습니다. Pi 코드·Android APK·DB 스키마 변경은 없습니다.
+
+최종 UTC `clean build`에서 53개 검사를 모두 통과했습니다. 실제 WebSocket의 첫 프레임 전달과 세 종류 권한 철회, DB 연결 2개인 환경에서 동시 영상 4개와 정상 `/healthz`, 영상 미수신 시 요청 종료를 검증했습니다. 수정 전 OSIV=true에서 활성 연결이 유지되는 실패 재현 기록도 로컬에 보존했습니다. 수정 후보는 `checkpoint/pre-deploy-2026-09-17-r3`에 보관하고, 실제 배포 뒤 앱의 영상 확인을 다시 진행합니다.

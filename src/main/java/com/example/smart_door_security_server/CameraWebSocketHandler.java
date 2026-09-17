@@ -8,6 +8,7 @@ import org.springframework.web.socket.handler.BinaryWebSocketHandler;
 
 @Component // 👈 필수! 스프링 빈으로 등록해야 WebConfig에서 주입을 받습니다.
 public class CameraWebSocketHandler extends BinaryWebSocketHandler {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CameraWebSocketHandler.class);
     private DeviceRegistrationService devices;
     @org.springframework.beans.factory.annotation.Autowired
     void setDevices(DeviceRegistrationService devices) { this.devices = devices; }
@@ -24,7 +25,8 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
             if (owner != null) {
                 long nextCheck = (long) session.getAttributes().getOrDefault("nextIdentityCheck", 0L);
                 if (System.currentTimeMillis() >= nextCheck) {
-                    var identity = devices.require(session.getHandshakeHeaders().getFirst("Authorization"), DeviceRole.CAMERA, owner);
+                    var identity = devices.requireCameraSession((String) session.getAttributes().get("cameraDevice"),
+                            owner, (String) session.getAttributes().get("cameraTokenHash"));
                     if (!identity.deviceId().equals(session.getAttributes().get("cameraDevice"))) {
                         session.close(CloseStatus.POLICY_VIOLATION); return;
                     }
@@ -38,6 +40,9 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
         } catch (org.springframework.web.server.ResponseStatusException revoked) {
             session.close(CloseStatus.POLICY_VIOLATION);
         } catch (Exception e) {
+            String origin = e.getStackTrace().length == 0 ? "unknown"
+                    : e.getStackTrace()[0].getClassName() + "." + e.getStackTrace()[0].getMethodName();
+            log.warn("Camera binary frame failed: {} at {}", e.getClass().getSimpleName(), origin);
             if (session != null) session.close(CloseStatus.SERVER_ERROR);
         }
     }

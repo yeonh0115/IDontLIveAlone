@@ -11,6 +11,7 @@ Android·Render 서버·Pi A·Pi B 센서 기록·PC 리포트를 함께 관리�
 | `checkpoint/network-original-2026-09-16` | 접속정보·키를 제거한 원래 Pi B·PC 코드 (`a8a9266`) |
 | `checkpoint/pre-deploy-2026-09-17` | 연결 코드·HTTPS 통합·이벤트 사진 OFF 후보 (`622d5d6`) |
 | `checkpoint/pre-deploy-2026-09-17-r2` | UTC 빌드에서 발견한 날짜 저장 오류 수정 후 재배포 후보 |
+| `checkpoint/pre-deploy-2026-09-17-r3` | 실제 영상 연결의 1011 오류·DB 연결 고갈·전송 지연 수정 후보 |
 
 Annotated tag를 GitHub에 보관하며 후속 수정은 별도 커밋으로 기록합니다. Git에는 DB 내용, 얼굴 모델·샘플, SD 이미지, 인증키를 넣지 않습니다. 태그만 되돌려도 운영 데이터가 복원되는 것은 아닙니다.
 

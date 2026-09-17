@@ -135,6 +135,14 @@ public class DeviceRegistrationService {
         return owner != null && devices.findByUserNoAndRole(owner, role).isPresent();
     }
 
+    @Transactional(readOnly=true)
+    public DeviceIdentity requireCameraSession(String deviceId, Integer owner, String tokenHash) {
+        if (deviceId == null || owner == null || tokenHash == null) throw TokenSecrets.unauthorized();
+        PairedDevice device = devices.findById(deviceId).orElseThrow(TokenSecrets::unauthorized);
+        if (!device.getTokenHash().equals(tokenHash)) throw TokenSecrets.unauthorized();
+        return identity(device, DeviceRole.CAMERA, owner);
+    }
+
     DeviceIdentity identity(PairedDevice device, DeviceRole role, Integer requestedOwner) {
         if (device.getUserNo() == null || device.getRole() != role || !users.existsById(device.getUserNo())
                 || (requestedOwner != null && !requestedOwner.equals(device.getUserNo()))) {

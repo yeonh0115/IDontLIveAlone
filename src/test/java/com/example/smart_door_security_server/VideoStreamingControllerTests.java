@@ -30,19 +30,20 @@ class VideoStreamingControllerTests {
         DeviceRegistrationService devices=mock(DeviceRegistrationService.class);
         var request=mock(org.springframework.http.server.ServerHttpRequest.class);
         var response=mock(org.springframework.http.server.ServerHttpResponse.class);
-        var headers=new org.springframework.http.HttpHeaders(); headers.setBearerAuth("test-device-token");
+        var headers=new org.springframework.http.HttpHeaders(); headers.setBearerAuth("test-device-token-with-at-least-32-characters");
         when(request.getHeaders()).thenReturn(headers);
-        when(devices.require("Bearer test-device-token",DeviceRole.CAMERA,null))
+        when(devices.require("Bearer test-device-token-with-at-least-32-characters",DeviceRole.CAMERA,null))
                 .thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
         var interceptor=new CameraHandshakeInterceptor(devices);
         assertFalse(interceptor.beforeHandshake(request,response,new CameraWebSocketHandler(),new java.util.HashMap<>()));
         verify(response).setStatusCode(org.springframework.http.HttpStatus.FORBIDDEN);
         doReturn(new DeviceRegistrationService.DeviceIdentity("camera",DeviceRole.CAMERA,111))
-                .when(devices).require("Bearer test-device-token",DeviceRole.CAMERA,null);
+                .when(devices).require("Bearer test-device-token-with-at-least-32-characters",DeviceRole.CAMERA,null);
         var attributes=new java.util.HashMap<String,Object>();
         assertTrue(interceptor.beforeHandshake(request,response,new CameraWebSocketHandler(),attributes));
         assertEquals(111,attributes.get("cameraOwner")); assertEquals("camera",attributes.get("cameraDevice"));
-        assertFalse(attributes.values().contains("Bearer test-device-token"));
+        assertFalse(attributes.values().contains("Bearer test-device-token-with-at-least-32-characters"));
+        assertEquals(TokenSecrets.hash("test-device-token-with-at-least-32-characters"),attributes.get("cameraTokenHash"));
     }
 
     private static byte[] readOneFrame(VideoStreamingController controller,String authorization) throws Exception {

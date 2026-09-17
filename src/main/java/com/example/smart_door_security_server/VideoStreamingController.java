@@ -20,6 +20,8 @@ public class VideoStreamingController {
     private static final java.util.concurrent.ConcurrentMap<Integer, Frame> ownerFrames = new java.util.concurrent.ConcurrentHashMap<>();
     private AppSessionService sessions;
     private DeviceRegistrationService devices;
+    @org.springframework.beans.factory.annotation.Value("${app.video-idle-timeout-ms:15000}")
+    private long idleTimeoutMillis = 15000;
     @org.springframework.beans.factory.annotation.Autowired
     void setAccess(AppSessionService sessions, DeviceRegistrationService devices) {
         this.sessions = sessions; this.devices = devices;
@@ -57,9 +59,14 @@ public class VideoStreamingController {
         return getVideoFeed(null);
     }
 
+    public ResponseEntity<StreamingResponseBody> getVideoFeed(String authorization) {
+        return getVideoFeed(authorization, null);
+    }
+
     @GetMapping("/video_feed")
     public ResponseEntity<StreamingResponseBody> getVideoFeed(
-            @RequestHeader(value="Authorization", required=false) String authorization) {
+            @RequestHeader(value="Authorization", required=false) String authorization,
+            jakarta.servlet.http.HttpServletResponse servletResponse) {
         Integer owner = authorization == null ? null : sessions.requireUser(authorization);
         
         // MJPEG(Motion JPEG) 표준에 부합하도록 멀티파트(boundary=frame) 타입 지정
@@ -73,6 +80,7 @@ public class VideoStreamingController {
             public void writeTo(OutputStream out) throws IOException {
                 Frame lastSent = null;
                 long nextSessionCheck = System.currentTimeMillis() + 10000;
+                long lastFrameSentAt = System.currentTimeMillis();
                 while (true) {
                     long now = System.currentTimeMillis();
                     if (owner != null && now >= nextSessionCheck) {
@@ -84,6 +92,8 @@ public class VideoStreamingController {
                     
                     // 💡 카메라 전송이 끊겼거나(3초 이상 무응답) 프레임이 비어있으면 0.1초 쉬었다가 다시 확인
                     if (frame == null || frame == lastSent || (now - frame.updatedAt() > 3000)) {
+                        // A disconnected camera must not leave an idle HTTP worker alive forever.
+                        if (now - lastFrameSentAt >= idleTimeoutMillis) break;
                         try {
                             Thread.sleep(20);
                         } catch (InterruptedException e) {
@@ -103,7 +113,11 @@ public class VideoStreamingController {
                         out.write(frame.jpeg());
                         out.write("\r\n\r\n".getBytes());
                         out.flush(); // 即시 버퍼를 밀어서 스마트폰 앱으로 지연 없이 전송
+                        // Spring 7 wraps this stream with nonFlushing() by default.
+                        // Flush the active async servlet response so even small JPEGs arrive now.
+                        if (servletResponse != null) servletResponse.flushBuffer();
                         lastSent = frame;
+                        lastFrameSentAt = now;
                         
                     } catch (IOException e) {
                         // 스마트폰 앱이 화면을 끄거나 연결을 해제하면 전송 루프를 탈출하여 리소스를 해제합니다.
