@@ -8,7 +8,7 @@ const html = fs.readFileSync(path.join(__dirname, '../app/src/main/assets/direct
 const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 
 function fixture(options = {}) {
-  const calls = {ready: 0, offers: [], states: [], stats: []};
+  const calls = {ready: 0, offers: [], states: [], stats: [], diagnostics: [], iceCounts: []};
   const timers = new Map();
   let timerId = 0, time = 0, peer;
   const video = {srcObject: null, play: async () => {}, pause() { this.paused = true; }};
@@ -19,8 +19,8 @@ function fixture(options = {}) {
     }
     addTransceiver(kind, init) { this.transceivers.push({kind, init}); }
     createOffer() { return options.offerPromise || Promise.resolve({type: 'offer', sdp: 'v=0\r\n'}); }
-    async setLocalDescription(value) { this.localDescription = value; }
-    async setRemoteDescription(value) { this.remoteDescription = value; }
+    async setLocalDescription(value) { if (options.localError) throw new Error(options.localError); this.localDescription = value; }
+    async setRemoteDescription(value) { if (options.remoteError) throw new Error(options.remoteError); this.remoteDescription = value; }
     addEventListener(name, callback) { this.events.set(name, callback); }
     removeEventListener(name) { this.events.delete(name); }
     async getStats() { return options.stats || new Map(); }
@@ -28,11 +28,13 @@ function fixture(options = {}) {
   }
   const context = vm.createContext({
     document: {getElementById: () => video},
-    window: {addEventListener() {}}, performance: {now: () => time}, RTCPeerConnection: Peer,
+    window: {addEventListener() {}, isSecureContext: true}, performance: {now: () => time}, RTCPeerConnection: options.unsupported ? undefined : Peer,
     MediaStream: class { constructor(tracks) { this.tracks = tracks; } },
     NativeCamera: {
       ready: () => calls.ready++, offer: sdp => calls.offers.push(sdp),
-      state: value => calls.states.push(value), stats: (...args) => calls.stats.push(args)
+      state: value => calls.states.push(value), stats: (...args) => calls.stats.push(args),
+      diagnostic: value => calls.diagnostics.push(value),
+      iceCandidates: (...args) => calls.iceCounts.push(args)
     },
     setTimeout: (fn, delay) => { timers.set(++timerId, {fn, delay, interval: false}); return timerId; },
     setInterval: (fn, delay) => { timers.set(++timerId, {fn, delay, interval: true}); return timerId; },
@@ -84,6 +86,8 @@ test('incomplete ICE gathering fails instead of sending partial SDP', async () =
   assert.deepEqual(f.calls.states, ['failed']);
   assert.equal(f.calls.offers.length, 0);
   assert.equal(f.peer.closed, true);
+  assert.ok(f.calls.diagnostics.includes('ice_gather_timeout'));
+  assert.deepEqual(f.calls.iceCounts, [[false, 0, 0, 0]]);
 });
 
 test('stop while offer is pending prevents late bridge and media activity', async () => {
@@ -128,4 +132,37 @@ test('connection failure closes the peer and does not negotiate again', async ()
   assert.deepEqual(f.calls.states, ['failed']);
   assert.equal(f.calls.offers.length, 1);
   assert.equal(f.peer.closed, true);
+});
+
+test('unsupported runtime reports a fixed reason before any offer', async () => {
+  const f = fixture({unsupported: true}); await f.api.start();
+  assert.ok(f.calls.diagnostics.includes('unsupported_rtc'));
+  assert.deepEqual(f.calls.states, ['failed']);
+  assert.equal(f.calls.offers.length, 0);
+});
+
+test('local and remote description errors never expose exception text', async () => {
+  const privateDetail = 'sensitive exception text';
+  const local = fixture({localError: privateDetail}); await local.api.start();
+  assert.ok(local.calls.diagnostics.includes('local_set_failed'));
+  assert.equal(local.calls.offers.length, 0);
+  const remote = fixture({remoteError: privateDetail}); await remote.api.start();
+  await remote.api.acceptAnswer('v=0\r\n');
+  assert.ok(remote.calls.diagnostics.includes('remote_set_failed'));
+  assert.equal(JSON.stringify([local.calls, remote.calls]).includes(privateDetail), false);
+});
+
+test('offer rejection reports only the fixed create stage', async () => {
+  const f = fixture({offerPromise: Promise.reject(new Error('private offer details'))});
+  await f.api.start();
+  assert.ok(f.calls.diagnostics.includes('offer_create_failed'));
+  assert.equal(JSON.stringify(f.calls).includes('private offer details'), false);
+  assert.equal(f.calls.offers.length, 0);
+});
+
+test('gathering diagnostics emit counts without candidate addresses or SDP', async () => {
+  const f = fixture({offerPromise: Promise.resolve({type:'offer', sdp:'v=0\r\na=candidate:1 1 udp 123 private-host 1000 typ host\r\na=candidate:2 1 udp 456 private-public 2000 typ srflx\r\n'})});
+  await f.api.start();
+  assert.deepEqual(f.calls.iceCounts, [[true, 1, 1, 0]]);
+  assert.equal(JSON.stringify(f.calls.iceCounts).includes('private'), false);
 });

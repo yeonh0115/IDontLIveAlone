@@ -10,21 +10,31 @@
   let pc = null, stopped = false, statsTimer = null, disconnectTimer = null;
   let lastBytes = -1, lastFrames = -1, lastProgress = performance.now();
   const report = state => { if (!stopped) NativeCamera.state(state); };
+  const diagnose = stage => { if (!stopped) NativeCamera.diagnostic(stage); };
   const close = () => {
     stopped = true;
     clearInterval(statsTimer); clearTimeout(disconnectTimer);
-    if (pc) { pc.ontrack = null; pc.onconnectionstatechange = null; pc.close(); pc = null; }
+    if (pc) { pc.ontrack = null; pc.onconnectionstatechange = null; pc.oniceconnectionstatechange = null; pc.close(); pc = null; }
     video.pause(); video.srcObject = null;
   };
-  const fail = () => { report('failed'); close(); };
+  const fail = stage => { diagnose(stage); report('failed'); close(); };
+  function reportIceCounts(peer, complete) {
+    const counts = {host:0, srflx:0, relay:0};
+    const sdp = peer.localDescription ? peer.localDescription.sdp : '';
+    for (const line of sdp.split(/\r?\n/)) {
+      const match = /^a=candidate:.*\styp\s+(host|srflx|relay)\b/.exec(line);
+      if (match) counts[match[1]]++;
+    }
+    if (!stopped && peer === pc) NativeCamera.iceCandidates(complete, counts.host, counts.srflx, counts.relay);
+  }
   async function waitForIce(peer) {
-    if (peer.iceGatheringState === 'complete') return;
+    if (peer.iceGatheringState === 'complete') { reportIceCounts(peer, true); return; }
     await new Promise((resolve, reject) => {
       let timer;
       const cleanup = () => { clearTimeout(timer); peer.removeEventListener('icegatheringstatechange', changed); };
-      const changed = () => { if (peer.iceGatheringState === 'complete') { cleanup(); resolve(); } };
+      const changed = () => { if (peer.iceGatheringState === 'complete') { cleanup(); reportIceCounts(peer, true); resolve(); } };
       peer.addEventListener('icegatheringstatechange', changed);
-      timer = setTimeout(() => { cleanup(); reject(new Error('gathering timeout')); }, 10000);
+      timer = setTimeout(() => { cleanup(); reportIceCounts(peer, false); reject(new Error('gathering timeout')); }, 10000);
       changed();
     });
   }
@@ -46,50 +56,71 @@
       if (selected) {
         const local = stats.get(selected.localCandidateId), remote = stats.get(selected.remoteCandidateId);
         if (local && remote) {
-          if (local.candidateType === 'relay' || remote.candidateType === 'relay') { fail(); return; }
+          if (local.candidateType === 'relay' || remote.candidateType === 'relay') { fail('relay_rejected'); return; }
           NativeCamera.stats(local.candidateType || '', remote.candidateType || '', Math.floor(bytes), Math.floor(frames));
         }
       }
       if (bytes > lastBytes || frames > lastFrames) { lastProgress = performance.now(); lastBytes = bytes; lastFrames = frames; }
-      else if (peer.connectionState === 'connected' && performance.now() - lastProgress >= 10000) fail();
-    } catch (_) { /* Native negotiation/lease deadlines still apply. */ }
+      else if (peer.connectionState === 'connected' && performance.now() - lastProgress >= 10000) fail('stalled');
+    } catch (_) { diagnose('stats_failed'); }
   }
   async function start() {
+    let failureStage = 'peer_create_failed';
     try {
       if (stopped || pc) return;
-      if (typeof RTCPeerConnection !== 'function') { fail(); return; }
+      diagnose('start');
+      if (typeof RTCPeerConnection !== 'function') { fail('unsupported_rtc'); return; }
+      diagnose('peer_create');
       const peer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}],bundlePolicy:'max-bundle'});
       pc = peer;
+      failureStage = 'transceiver_failed'; diagnose('transceiver_add');
       peer.addTransceiver('video', {direction:'recvonly'});
       peer.ontrack = event => {
         if (stopped || peer !== pc) return;
+        diagnose('track_received');
         video.srcObject = event.streams[0] || new MediaStream([event.track]);
-        video.play().catch(fail);
+        video.play().catch(() => fail('video_play_failed'));
       };
-      video.onplaying = () => { if (!stopped && peer === pc) report('playing'); };
+      video.onplaying = () => { if (!stopped && peer === pc) { diagnose('video_playing'); report('playing'); } };
+      peer.oniceconnectionstatechange = () => {
+        if (!stopped && peer === pc) diagnose('ice_' + peer.iceConnectionState);
+      };
       peer.onconnectionstatechange = () => {
         if (stopped || peer !== pc) return;
+        diagnose('connection_' + peer.connectionState);
         clearTimeout(disconnectTimer);
-        if (peer.connectionState === 'failed' || peer.connectionState === 'closed') fail();
-        else if (peer.connectionState === 'disconnected') disconnectTimer = setTimeout(fail, 5000);
+        if (peer.connectionState === 'failed' || peer.connectionState === 'closed') fail('connection_' + peer.connectionState);
+        else if (peer.connectionState === 'disconnected') disconnectTimer = setTimeout(() => fail('disconnected_timeout'), 5000);
       };
+      failureStage = 'offer_create_failed'; diagnose('offer_create');
       const offer = await peer.createOffer();
       if (stopped || peer !== pc) return;
+      diagnose('offer_created');
+      failureStage = 'local_set_failed'; diagnose('local_set');
       await peer.setLocalDescription(offer);
+      diagnose('local_set_done');
+      failureStage = 'ice_gather_timeout'; diagnose('ice_gathering');
       await waitForIce(peer);
       if (stopped || peer !== pc) return;
+      diagnose('ice_gather_complete');
+      failureStage = 'offer_submit_failed'; diagnose('offer_submit');
       NativeCamera.offer(peer.localDescription.sdp);
       statsTimer = setInterval(() => inspectStats(peer), 5000);
-    } catch (_) { if (!stopped) fail(); }
+    } catch (_) { if (!stopped) fail(failureStage); }
   }
   async function acceptAnswer(sdp) {
     const peer = pc;
     if (stopped || !peer) return;
-    try { await peer.setRemoteDescription({type:'answer',sdp:sdp}); }
-    catch (_) { if (!stopped && peer === pc) fail(); }
+    diagnose('answer_received');
+    try { await peer.setRemoteDescription({type:'answer',sdp:sdp}); diagnose('remote_set_done'); }
+    catch (_) { if (!stopped && peer === pc) fail('remote_set_failed'); }
   }
   window.DirectCamera = Object.freeze({start, acceptAnswer, close});
   window.addEventListener('pagehide', close);
+  window.addEventListener('error', () => diagnose('page_error'));
+  window.addEventListener('unhandledrejection', () => diagnose('promise_rejected'));
+  diagnose('page_boot');
+  diagnose(window.isSecureContext ? 'page_secure' : 'page_insecure');
   NativeCamera.ready();
 })();
 </script></body></html>
