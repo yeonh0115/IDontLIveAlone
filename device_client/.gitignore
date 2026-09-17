@@ -1,0 +1,7 @@
+device_state/
+**/credentials.json
+**/status.json
+**/paired-owner.json
+**/pairing-code.json
+**/.credentials.lock
+*.tmp

@@ -202,8 +202,9 @@ public class LoginActivity extends AppCompatActivity {
 
                 if (response.isSuccessful() && response.body() != null) {
                     // 세션 생성 및 저장
-                    if (sessionManager != null) {
-                        sessionManager.createSession(response.body());
+                    if (sessionManager == null || !sessionManager.createSession(response.body())) {
+                        Snackbar.make(etId, "로그인 정보를 안전하게 저장하지 못했습니다. 다시 시도해주세요.", Snackbar.LENGTH_LONG).show();
+                        return;
                     }
 
                     Snackbar.make(etId, String.format("%s님, 환영합니다!", response.body().getUsername()), Snackbar.LENGTH_SHORT).show();

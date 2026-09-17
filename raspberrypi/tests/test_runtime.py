@@ -43,11 +43,20 @@ def dependency_stubs():
 def load_program(filename, stubs):
     spec = importlib.util.spec_from_file_location("test_" + filename[:-3], ROOT / filename)
     module = importlib.util.module_from_spec(spec)
-    with patch.dict(sys.modules, stubs), patch.dict("os.environ", {}, clear=True):
+    with patch.dict(sys.modules, stubs), patch.dict("os.environ", {"EVENT_PHOTOS_ENABLED": "true"}, clear=True):
         spec.loader.exec_module(module)
     return module
 
 class RuntimeTests(unittest.TestCase):
+    def test_actual_card_gpio_and_recognition_parameters_override_backup_defaults(self):
+        defaults = Settings({}, ROOT)
+        self.assertEqual((defaults.solenoid_pin, defaults.face_threshold, defaults.face_required_successes), (23, 85, 4))
+        card = Settings({"SOLENOID_PIN": "24", "FACE_THRESHOLD": "80", "FACE_REQUIRED_SUCCESSES": "2"}, ROOT)
+        self.assertEqual((card.solenoid_pin, card.face_threshold, card.face_required_successes), (24, 80, 2))
+        for invalid in ({"SOLENOID_PIN": "-1"}, {"FACE_THRESHOLD": "nan"}, {"FACE_REQUIRED_SUCCESSES": "0"}):
+            with self.assertRaises(ValueError):
+                Settings(invalid, ROOT)
+
     def test_configuration_and_relative_download_url(self):
         config = Settings({}, ROOT)
         self.assertEqual(config.stream_url, "http://127.0.0.1:5002/video_feed")
@@ -118,6 +127,25 @@ class RuntimeTests(unittest.TestCase):
             path = state.queue(payload)
             self.assertEqual(state.deliver(path, lambda _: (403, {})), "forbidden")
             self.assertTrue(path.exists())
+
+    def test_receipt_write_error_preserves_committed_success_and_safe_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = TaskState(root / "state")
+            samples = task_sample_directory(root / "facedata", 7, "task-1")
+            def train():
+                samples.mkdir(parents=True, exist_ok=True)
+                (samples / "0.jpg").write_bytes(b"same-task-sample")
+                return {"status": "success", "message": "model applied"}
+            operation = Mock(side_effect=train)
+            with patch("pi_runtime.atomic_json", side_effect=PermissionError("receipt directory denied")):
+                result = state.run_once("task-1", operation)
+            self.assertEqual(result["status"], "success")
+            self.assertIsNone(state.completed_result("task-1"))
+            self.assertEqual(state.run_once("task-1", operation)["status"], "success")
+            self.assertEqual(len(list(training_image_paths(root / "facedata"))), 1)
+            state.run_once("task-1", operation)
+            self.assertEqual(operation.call_count, 2)
 
     def test_legacy_baseline_is_frozen_before_new_models(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -235,6 +263,18 @@ class RuntimeTests(unittest.TestCase):
                 self.assertTrue(backup.exists())
 
 class CameraTests(unittest.TestCase):
+    def test_disabled_event_photos_never_read_frame_or_upload(self):
+        stubs = dependency_stubs()
+        program = load_program("fin_camera.py", stubs)
+        program.settings.event_photos_enabled = False
+        program.frames = Mock()
+        self.assertEqual(program.upload_event_image("event-id"), (False, None))
+        body, code = program.trigger_event()
+        self.assertEqual(code, 410)
+        self.assertEqual(body["status"], "disabled")
+        program.frames.get.assert_not_called()
+        stubs["requests"].post.assert_not_called()
+
     def setUp(self):
         self.stubs = dependency_stubs()
         self.camera = load_program("fin_camera.py", self.stubs)
@@ -261,7 +301,7 @@ class CameraTests(unittest.TestCase):
         self.assertIs(options["check_hostname"], True)
 
     def test_trigger_keeps_log_id_and_uses_configured_account_only(self):
-        self.camera.settings = Settings({"USER_NO": "42"}, ROOT)
+        self.camera.settings = Settings({"USER_NO": "42", "EVENT_PHOTOS_ENABLED": "true"}, ROOT)
         self.camera.frames.put(b"JPEG")
         self.camera.request.args = {"log_id": "same-log", "userNo": "999"}
         post = self.stubs["requests"].post
@@ -272,10 +312,25 @@ class CameraTests(unittest.TestCase):
         self.assertEqual(post.call_args.kwargs["data"]["userNo"], "42")
         self.assertEqual(post.call_args.kwargs["data"]["log_id"], "same-log")
         self.assertIsNot(post.call_args.kwargs.get("verify", True), False)
-        self.camera.settings = Settings({}, ROOT)
+        self.camera.settings = Settings({"EVENT_PHOTOS_ENABLED": "true"}, ROOT)
         post.reset_mock()
         self.assertEqual(self.camera.trigger_event()[1], 503)
         post.assert_not_called()
+
+    def test_trigger_rejects_different_expected_owner_before_upload(self):
+        self.camera.settings = Settings({"USER_NO": "42", "EVENT_PHOTOS_ENABLED": "true"}, ROOT)
+        self.camera.frames.put(b"JPEG")
+        post = self.stubs["requests"].post
+        self.camera.request.args = {"log_id": "sensor-event", "expected_user_no": "43"}
+        self.assertEqual(self.camera.trigger_event()[1], 403)
+        self.camera.request.args["expected_user_no"] = "invalid"
+        self.assertEqual(self.camera.trigger_event()[1], 400)
+        post.assert_not_called()
+        self.camera.request.args["expected_user_no"] = "42"
+        post.return_value = SimpleNamespace(status_code=200, json=lambda: {"url": "/uploads/sensor.jpg"})
+        response, status = self.camera.trigger_event()
+        self.assertEqual(status, 200)
+        self.assertEqual(response["user_no"], 42)
 
 class FakeRecognizer:
     def __init__(self):

@@ -98,13 +98,28 @@ public class TaskQueueService {
     @Transactional
     public Map<String, Object> getNextTask(String deviceId, Integer userNo) {
         requireDevice(deviceId);
+        return claim(deviceId, userNo, false);
+    }
+
+    @Transactional
+    public Map<String, Object> getNextTask(DeviceRegistrationService.DeviceIdentity camera) {
+        return claim(camera.deviceId(), camera.userNo(), true);
+    }
+
+    private Map<String, Object> claim(String deviceId, Integer userNo, boolean paired) {
         if (userNo != null && userNo <= 0) throw badRequest("user_no가 올바르지 않습니다.");
         Instant now = clock.instant();
         while (true) {
             List<FaceTask> candidates = taskRepository.findClaimable(FaceTaskStatus.QUEUED,
-                    FaceTaskStatus.RUNNING, now, userNo, PageRequest.of(0, 1));
+                    FaceTaskStatus.RUNNING, now, userNo, paired, PageRequest.of(0, 1));
             if (candidates.isEmpty()) return null;
             FaceTask task = candidates.getFirst();
+            if (!imageStorage.hasImages(task.getTaskId())) {
+                failExpiredTask(task, now);
+                task.setMessage("임시 얼굴 사진이 만료되었습니다. 사진을 다시 등록해 주세요.");
+                taskRepository.saveAndFlush(task);
+                continue;
+            }
             if (task.getAttempts() >= MAX_ATTEMPTS) {
                 failExpiredTask(task, now);
                 taskRepository.saveAndFlush(task);
@@ -141,7 +156,17 @@ public class TaskQueueService {
     @Transactional
     public void renewLease(String taskId, String deviceId, String leaseToken) {
         requireDevice(deviceId);
+        renew(taskId, deviceId, leaseToken, null);
+    }
+
+    @Transactional
+    public void renewLease(String taskId, DeviceRegistrationService.DeviceIdentity camera, String leaseToken) {
+        renew(taskId, camera.deviceId(), leaseToken, camera.userNo());
+    }
+
+    private void renew(String taskId, String deviceId, String leaseToken, Integer owner) {
         FaceTask task = getLockedTask(taskId);
+        requireOwner(task, owner);
         requireLease(task, deviceId, leaseToken);
         Instant now = clock.instant();
         if (task.getStatus() != FaceTaskStatus.RUNNING || !task.getLeaseExpiresAt().isAfter(now)) {
@@ -155,11 +180,23 @@ public class TaskQueueService {
     public void recordResult(String taskId, String type, String deviceId, String leaseToken,
                              String resultStatus, String message) {
         requireDevice(deviceId);
+        record(taskId, type, deviceId, leaseToken, resultStatus, message, null);
+    }
+
+    @Transactional
+    public void recordResult(String taskId, String type, DeviceRegistrationService.DeviceIdentity camera,
+            String leaseToken, String resultStatus, String message) {
+        record(taskId, type, camera.deviceId(), leaseToken, resultStatus, message, camera.userNo());
+    }
+
+    private void record(String taskId, String type, String deviceId, String leaseToken,
+            String resultStatus, String message, Integer owner) {
         if (!"TRAIN".equals(type)) throw badRequest("지원하지 않는 작업 종류입니다.");
         if (!"success".equals(resultStatus) && !"error".equals(resultStatus)) {
             throw badRequest("result.status는 success 또는 error여야 합니다.");
         }
         FaceTask task = getLockedTask(taskId);
+        requireOwner(task, owner);
         requireLease(task, deviceId, leaseToken);
         if (task.getStatus() == FaceTaskStatus.SUCCEEDED || task.getStatus() == FaceTaskStatus.FAILED) {
             if (resultStatus.equals(task.getResultStatus())) return;
@@ -174,6 +211,7 @@ public class TaskQueueService {
         task.setMessage(resultMessage(resultStatus, message));
         task.setUpdatedAt(now);
         task.setFinishedAt(now);
+        deleteImagesAfterCommit(task.getTaskId());
         // The controller responds only after this transaction has durably committed.
     }
 
@@ -195,6 +233,12 @@ public class TaskQueueService {
                 || !deviceId.equals(task.getDeviceId())) throw conflict("현재 작업의 임대 정보와 일치하지 않습니다.");
     }
 
+    private static void requireOwner(FaceTask task, Integer owner) {
+        if (owner != null && !owner.equals(task.getUserNo())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "다른 계정의 학습 작업입니다.");
+        }
+    }
+
     private static void requireUserId(String userId) {
         if (userId == null || userId.isBlank() || userId.length() > 50) throw badRequest("userId가 올바르지 않습니다.");
     }
@@ -206,11 +250,20 @@ public class TaskQueueService {
         return value.length() > 1000 ? value.substring(0, 1000) : value;
     }
 
-    private static void failExpiredTask(FaceTask task, Instant now) {
+    private void failExpiredTask(FaceTask task, Instant now) {
         task.setStatus(FaceTaskStatus.FAILED);
         task.setMessage("라즈베리파이 응답을 받지 못해 학습이 종료되었습니다. 연결을 확인하고 다시 등록해 주세요.");
         task.setUpdatedAt(now);
         task.setFinishedAt(now);
+        deleteImagesAfterCommit(task.getTaskId());
+    }
+
+    private void deleteImagesAfterCommit(String taskId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { imageStorage.deleteTask(taskId); }
+            });
+        } else imageStorage.deleteTask(taskId);
     }
 
     private static ResponseStatusException badRequest(String message) {

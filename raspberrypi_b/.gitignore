@@ -1,0 +1,9 @@
+event_state/
+**/pending/
+**/completed/
+**/quarantine/
+.env
+.env.*
+!.env.example
+*.env
+*.tmp

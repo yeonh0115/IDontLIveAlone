@@ -20,6 +20,11 @@ import com.example.na_honja_ansanda.R;
 // 싱글톤 세션 및 유저 모델 정상 참조
 import com.example.na_honja_ansanda.data.session.SessionManager;
 import com.example.na_honja_ansanda.data.model.User;
+import com.example.na_honja_ansanda.data.remote.ApiClient;
+import com.example.na_honja_ansanda.ui.security.DeviceLinkActivity;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class MyPageFragment extends Fragment {
 
@@ -61,6 +66,8 @@ public class MyPageFragment extends Fragment {
 
         // 🔄 1. DB의 users 테이블 기반 세션에서 데이터 가져와 세팅하기
         displayUserInfo();
+        root.findViewById(R.id.btn_device_link).setOnClickListener(v ->
+                startActivity(new Intent(requireContext(), DeviceLinkActivity.class)));
 
         // 🧹 기능 1: 캐시 비우기
         root.findViewById(R.id.layout_menu_clear_cache).setOnClickListener(v -> {
@@ -132,6 +139,13 @@ public class MyPageFragment extends Fragment {
         // 로그아웃 처리
         root.findViewById(R.id.btn_logout).setOnClickListener(v -> {
             if (sessionManager != null) {
+                String authorization = sessionManager.getAuthorizationHeader();
+                if (authorization != null) {
+                    ApiClient.getApiService().logout(authorization).enqueue(new Callback<Void>() {
+                        @Override public void onResponse(Call<Void> call, Response<Void> response) { }
+                        @Override public void onFailure(Call<Void> call, Throwable error) { }
+                    });
+                }
                 int currentAvatar = sharedPreferences.getInt(KEY_AVATAR, R.drawable.avatar_police);
                 sessionManager.clearSession();
                 sharedPreferences.edit().putInt(KEY_AVATAR, currentAvatar).apply();

@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 public class UserController {
 
     private final UserRepository userRepository;
+    private final AppSessionService sessions;
 
     @PostMapping("/update-profile")
     public ResponseEntity<User> updateProfile(@RequestBody UpdateProfileRequest request) {
@@ -94,19 +95,33 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<User> login(@RequestBody LoginRequest request) {
-        System.out.println("ID: " + request.getId() + ", PW: " + request.getPw());
+    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
+        if (request.getId() == null || request.getPw() == null) return ResponseEntity.status(401).build();
         Optional<User> userBox = userRepository.findByUserId(request.getId());
 
         if (userBox.isPresent()) {
             User user = userBox.get();
-            if (user.getPasswordHash().equals(request.getPw())) {
-                return ResponseEntity.ok(user);
+            if (request.getPw().equals(user.getPasswordHash())) {
+                var session = sessions.issue(user.getUserNo());
+                Map<String, Object> response = new java.util.LinkedHashMap<>();
+                response.put("userNo", user.getUserNo()); response.put("userId", user.getUserId());
+                response.put("username", user.getUsername()); response.put("phone", user.getPhone());
+                response.put("email", user.getEmail()); response.put("doorPassword", user.getDoorPassword());
+                response.put("avatar", user.getAvatar()); response.put("createdAt", user.getCreatedAt());
+                response.put("sessionToken", session.sessionToken());
+                response.put("sessionExpiresAt", session.sessionExpiresAt());
+                return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.status(401).build();
             }
         }
         return ResponseEntity.status(401).build();
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@RequestHeader(value="Authorization", required=false) String authorization) {
+        sessions.revoke(authorization);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/update-door-lock")

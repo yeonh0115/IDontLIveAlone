@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.example.na_honja_ansanda.R;
 import com.example.na_honja_ansanda.data.model.ReportResponse;
+import com.example.na_honja_ansanda.data.model.ServerTimestamp;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -91,51 +92,16 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ViewHolder
             }
         }
 
-        /**
-         * UTC -> 한국 시간(KST) Date 객체 변환
-         */
+        /** Server createdAt is KST unless the response includes an explicit offset. */
         private Date parseToKstDate(ReportResponse report) {
-            String timeSource = report.getCreatedAt();
-            if (timeSource == null || timeSource.trim().isEmpty()) {
-                timeSource = report.getReportDate();
-            }
-
-            if (timeSource == null || timeSource.trim().isEmpty()) {
-                return new Date();
-            }
-
-            String cleanTime = timeSource.replace("T", " ");
-            if (cleanTime.contains(".")) {
-                cleanTime = cleanTime.substring(0, cleanTime.indexOf("."));
-            }
-            if (cleanTime.endsWith("Z")) {
-                cleanTime = cleanTime.substring(0, cleanTime.length() - 1);
-            }
-
-            String[] possibleFormats = {
-                    "yyyy-MM-dd HH:mm:ss",
-                    "yyyy-MM-dd HH:mm"
-            };
-
-            for (String format : possibleFormats) {
-                try {
-                    SimpleDateFormat dbFormat = new SimpleDateFormat(format, Locale.getDefault());
-                    dbFormat.setTimeZone(TimeZone.getTimeZone("UTC")); // UTC 기준
-
-                    Date date = dbFormat.parse(cleanTime);
-                    if (date != null) {
-                        return date;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-            return new Date();
+            return ServerTimestamp.toDate(report.getCreatedAt());
         }
 
         /**
          * HH:mm:ss 형태 반환
          */
         private String formatDisplayTime(Date date) {
+            if (date == null) return "--:--";
             SimpleDateFormat kstFormat = new SimpleDateFormat("HH:mm:ss", Locale.KOREA);
             kstFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
             return kstFormat.format(date);
@@ -145,6 +111,7 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ViewHolder
          * yyyy-MM-dd HH:mm:ss 형태 반환
          */
         private String formatFullDisplayDateTime(Date date) {
+            if (date == null) return "시각 정보 없음";
             SimpleDateFormat kstFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA);
             kstFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
             return kstFormat.format(date);
@@ -155,6 +122,10 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ViewHolder
          */
         private List<Date> generatePhotoTimestamps(Date baseDate, int count) {
             List<Date> timestamps = new ArrayList<>();
+            if (baseDate == null) {
+                for (int i = 0; i < count; i++) timestamps.add(null);
+                return timestamps;
+            }
             Calendar cal = Calendar.getInstance();
             cal.setTime(baseDate);
 
@@ -334,7 +305,8 @@ public class ReportAdapter extends RecyclerView.Adapter<ReportAdapter.ViewHolder
 
                 // 💡 [핵심] 본문에 사진별 캡처 시각 타임라인을 구성하여 출력
                 StringBuilder contentBuilder = new StringBuilder();
-                contentBuilder.append("⏱️ 최초 감지 시각: ").append(formatFullDisplayDateTime(baseDate)).append("\n\n");
+                contentBuilder.append("리포트 날짜: ").append(report.getReportDate()).append("\n");
+                contentBuilder.append("⏱️ 리포트 생성 시각: ").append(formatFullDisplayDateTime(baseDate)).append("\n\n");
 
                 if (urlArray.length > 0) {
                     contentBuilder.append("📸 사진별 캡처 타임라인 (총 ").append(urlArray.length).append("장):\n");

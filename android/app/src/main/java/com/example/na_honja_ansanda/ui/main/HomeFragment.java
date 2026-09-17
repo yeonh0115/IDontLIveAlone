@@ -38,12 +38,9 @@ import com.example.na_honja_ansanda.data.session.SessionManager;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
-import java.util.TimeZone;
+import com.example.na_honja_ansanda.data.model.ServerTimestamp;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -167,7 +164,14 @@ public class HomeFragment extends Fragment {
             }
         });
 
-        webView.loadUrl("https://idontlivealone.onrender.com/video_feed");
+        String authorization = sessionManager == null ? null : sessionManager.getAuthorizationHeader();
+        if (authorization == null) {
+            webView.loadData("<html><body style='color:white;background:#182132'>카메라 영상을 보려면 다시 로그인하고 기기를 연결해주세요.</body></html>",
+                    "text/html; charset=utf-8", "UTF-8");
+            return;
+        }
+        webView.loadUrl("https://idontlivealone.onrender.com/video_feed",
+                java.util.Collections.singletonMap("Authorization", authorization));
     }
 
     private void fetchSensorLogs() {
@@ -330,42 +334,7 @@ public class HomeFragment extends Fragment {
     }
 
     private String formatLogTimeToKst(String timeSource) {
-        if (timeSource == null || timeSource.trim().isEmpty()) {
-            return "--:--";
-        }
-
-        String cleanTime = timeSource.replace("T", " ");
-        if (cleanTime.contains(".")) {
-            cleanTime = cleanTime.substring(0, cleanTime.indexOf("."));
-        }
-        if (cleanTime.endsWith("Z")) {
-            cleanTime = cleanTime.substring(0, cleanTime.length() - 1);
-        }
-
-        String[] possibleFormats = {
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd HH:mm"
-        };
-
-        for (String format : possibleFormats) {
-            try {
-                SimpleDateFormat dbFormat = new SimpleDateFormat(format, Locale.getDefault());
-                dbFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-
-                Date date = dbFormat.parse(cleanTime);
-                if (date != null) {
-                    SimpleDateFormat kstFormat = new SimpleDateFormat("HH:mm", Locale.KOREA);
-                    kstFormat.setTimeZone(TimeZone.getTimeZone("Asia/Seoul"));
-                    return kstFormat.format(date);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        if (cleanTime.length() >= 16) {
-            return cleanTime.substring(11, 16);
-        }
-        return "--:--";
+        return ServerTimestamp.clock(timeSource);
     }
 
     private void createLogCard(IntegratedLog log) {
@@ -516,7 +485,10 @@ public class HomeFragment extends Fragment {
     private void connectWebSocket() {
         try {
             String serverUrl = "wss://idontlivealone.onrender.com/audio-stream";
-            Request request = new Request.Builder().url(serverUrl).build();
+            Request.Builder builder = new Request.Builder().url(serverUrl);
+            String authorization = sessionManager == null ? null : sessionManager.getAuthorizationHeader();
+            if (authorization != null) builder.header("Authorization", authorization);
+            Request request = builder.build();
 
             webSocket = new OkHttpClient().newWebSocket(request, new WebSocketListener() {
                 @Override

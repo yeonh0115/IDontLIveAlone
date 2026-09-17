@@ -3,6 +3,12 @@
 **/build
 android
 raspberrypi
+raspberrypi_b
+reporting
+device_client
+deployment
+**/device_state
+**/credentials.json
 docs
 data
 pictures

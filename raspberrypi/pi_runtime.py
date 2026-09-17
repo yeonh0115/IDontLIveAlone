@@ -1,6 +1,8 @@
 """Hardware-independent configuration and durable task state for the door Pi."""
 import hashlib
+import datetime as dt
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -26,6 +28,15 @@ class Settings:
             raise ValueError("DEVICE_ID must not be empty")
         raw_user = env.get("USER_NO", "").strip()
         self.user_no = None
+        self.pairing_enabled = env.get("DEVICE_PAIRING", "0" if raw_user else "1").strip() != "0"
+        self.device = None
+        self.source_dir = source
+        self.event_photos_enabled = env.get("EVENT_PHOTOS_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+        self.face_threshold = float(env.get("FACE_THRESHOLD", "85"))
+        self.face_required_successes = int(env.get("FACE_REQUIRED_SUCCESSES", "4"))
+        self.solenoid_pin = int(env.get("SOLENOID_PIN", "23"))
+        if not math.isfinite(self.face_threshold) or self.face_threshold <= 0 or not 1 <= self.face_required_successes <= 100 or not 0 <= self.solenoid_pin <= 53:
+            raise ValueError("Invalid face threshold, consecutive recognition count or GPIO line")
         if raw_user:
             if not raw_user.isascii() or not raw_user.isdigit() or int(raw_user) <= 0:
                 raise ValueError("USER_NO must be a positive integer")
@@ -46,6 +57,21 @@ class Settings:
         if self.user_no is not None:
             params["user_no"] = self.user_no
         return params
+
+    def activate_pairing(self):
+        if not self.pairing_enabled:
+            return
+        self.user_no = None
+        import sys
+        # The installer copies the same helper beside these files; repo runs share it.
+        sys.path.insert(0, str(self.source_dir.parent / "device_client"))
+        from device_pairing import device_from_environment
+        self.device = device_from_environment("CAMERA", self.source_dir)
+        self.device.wait_paired()
+        self.user_no, self.device_id = self.device.user_no, self.device.device_id
+
+    def auth_headers(self):
+        return self.device.headers() if self.device else {}
 
 def event_log_id(value=None):
     if value is None or value == "":
@@ -101,7 +127,8 @@ def atomic_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
-        with temporary.open("w", encoding="utf-8") as handle:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, ensure_ascii=False)
             handle.flush()
             os.fsync(handle.fileno())
@@ -109,6 +136,89 @@ def atomic_json(path, value):
         sync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+class CaptureQueue:
+    """Persist one captured JPEG so an uncertain upload never takes a later photo."""
+    def __init__(self, root, user_no, client, get_frame, clock=time.time, logger=print):
+        self.root = Path(root)
+        self.pending = self.root / "pending"
+        self.quarantine = self.root / "quarantine"
+        self.pending.mkdir(parents=True, exist_ok=True)
+        self.quarantine.mkdir(parents=True, exist_ok=True)
+        self.user_no, self.client, self.get_frame, self.clock, self.log = user_no, client, get_frame, clock, logger
+
+    def save_frame(self, path, frame):
+        temporary = path.with_suffix(".tmp")
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(frame)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            sync_directory(path.parent)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def deliver(self, path):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        frame_path = path.with_suffix(".jpg")
+        if record["task"]["userNo"] != self.user_no:
+            self.log("[capture] Saved event belongs to a different account; delivery paused", flush=True)
+            return "retry"
+        status, body = self.client.upload(record["task"], frame_path.read_bytes())
+        url = (body.get("imageUrl") or body.get("image_url") or body.get("url")) if isinstance(body, dict) else None
+        if status == 200 and isinstance(url, str) and url:
+            path.unlink()
+            frame_path.unlink(missing_ok=True)
+            sync_directory(self.pending)
+            return "complete"
+        if status in (400, 404, 409, 410, 422):
+            record["lastHttpStatus"] = status
+            atomic_json(self.quarantine / path.name, record)
+            os.replace(frame_path, self.quarantine / frame_path.name)
+            path.unlink()
+            sync_directory(self.pending)
+            self.log(f"[capture] Task {record['task']['captureTaskId']} HTTP {status}; original JPEG quarantined", flush=True)
+            return "quarantined"
+        self.log(f"[capture] Upload HTTP {status}; same JPEG retained for retry", flush=True)
+        return "retry"
+
+    def step(self):
+        for path in sorted(self.pending.glob("*.json")):
+            if self.deliver(path) == "retry":
+                return "retry"
+        status, task = self.client.claim()
+        if status == 204:
+            return "idle"
+        if status != 200 or not isinstance(task, dict):
+            self.log(f"[capture] Claim HTTP {status}; waiting", flush=True)
+            return "retry"
+        for key in ("captureTaskId", "eventId", "eventDate", "expiresAt", "leaseToken"):
+            if not isinstance(task.get(key), str) or not task[key]:
+                raise ValueError("Capture task response is incomplete")
+        if task.get("userNo") != self.user_no:
+            raise ValueError("Capture task owner differs from the paired camera account")
+        event_log_id(task["eventId"])
+        expiry = dt.datetime.fromisoformat(task["expiresAt"].replace("Z", "+00:00"))
+        if expiry.utcoffset() is None:
+            raise ValueError("Capture task expiry must include a UTC offset")
+        if self.clock() >= expiry.timestamp():
+            self.client.failed(task, "Capture window expired; no new image taken")
+            return "expired"
+        frame = self.get_frame()
+        if frame is None:
+            self.client.failed(task, "Camera frame unavailable")
+            return "unavailable"
+        # Recheck after obtaining the frame; long reads must not create late photos.
+        if self.clock() >= expiry.timestamp():
+            self.client.failed(task, "Capture window expired; no new image taken")
+            return "expired"
+        path = self.pending / (task_key(task["captureTaskId"]) + ".json")
+        self.save_frame(path.with_suffix(".jpg"), frame)
+        atomic_json(path, {"task": task, "capturedAt": self.clock()})
+        return self.deliver(path)
 
 def task_key(task_id):
     return hashlib.sha256(str(task_id).encode("utf-8")).hexdigest()
@@ -251,7 +361,12 @@ class TaskState:
             return result
         result = operation()
         if result.get("status") == "success":
-            atomic_json(self.receipts / (task_key(task_id) + ".json"), {"task_id": str(task_id), "result": result})
+            try:
+                atomic_json(self.receipts / (task_key(task_id) + ".json"), {"task_id": str(task_id), "result": result})
+            except OSError as error:
+                # Training has committed already; report its real outcome. If the
+                # receipt is unavailable on replay, the task-keyed dataset is rebuilt.
+                print(f"[task] Task {task_id} completed; receipt could not be saved, replay will rebuild without duplicate samples: {error}", flush=True)
         return result
 
     def queue(self, payload):

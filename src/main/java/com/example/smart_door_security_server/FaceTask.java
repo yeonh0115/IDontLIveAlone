@@ -50,6 +50,8 @@ public class FaceTask {
     private Instant updatedAt;
     @Column(name = "finished_at")
     private Instant finishedAt;
+    @Column(nullable=false, columnDefinition="boolean default false")
+    private boolean temporaryImagesDeleted;
 
     public List<String> imageUrls() {
         return List.of(imageUrl1, imageUrl2, imageUrl3);

@@ -11,6 +11,7 @@ import java.util.List;
 @RequestMapping("/api/reports")
 public class DailyReportController {
     private final DailyReportRepository dailyReportRepository;
+    private final EventPhotoSettings settings;
 
     // Keep the database owner intact: return a DTO instead of mutating a managed entity.
     public record ReportResponse(Integer id, LocalDate reportDate, Integer totalEvents,
@@ -21,7 +22,7 @@ public class DailyReportController {
         return dailyReportRepository.findByUser_UserNoOrderByReportDateDesc(userNo).stream()
                 .map(report -> new ReportResponse(report.getId(), report.getReportDate(),
                         report.getTotalEvents(), report.getHighRiskEvents(), report.getReportText(),
-                        report.getPhotoUrl(), report.getCreatedAt()))
+                        settings.isEnabled() ? report.getPhotoUrl() : "", report.getCreatedAt()))
                 .toList();
     }
 }

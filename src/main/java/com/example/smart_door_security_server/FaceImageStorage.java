@@ -107,6 +107,20 @@ public class FaceImageStorage {
         }
     }
 
+    public boolean hasImages(String taskId) {
+        UUID.fromString(taskId);
+        Path directory = pictureRoot.resolve(taskId);
+        return Files.isRegularFile(directory.resolve("face1.jpg"))
+                && Files.isRegularFile(directory.resolve("face2.jpg")) && Files.isRegularFile(directory.resolve("face3.jpg"));
+    }
+
+    public boolean deleteTask(String taskId) {
+        UUID.fromString(taskId);
+        Path directory = pictureRoot.resolve(taskId);
+        delete(directory);
+        return !Files.exists(directory);
+    }
+
     private static ResponseStatusException badRequest(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }

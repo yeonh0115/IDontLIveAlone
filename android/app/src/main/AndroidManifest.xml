@@ -26,6 +26,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Na_honja_ansanda">
 
+        <activity android:name="com.example.na_honja_ansanda.ui.security.DeviceLinkActivity"
+            android:exported="false" />
+
         <activity
             android:name="com.example.na_honja_ansanda.ui.mypage.NoticeActivity"
             android:exported="false" />

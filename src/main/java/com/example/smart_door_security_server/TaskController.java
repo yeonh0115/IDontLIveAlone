@@ -13,11 +13,14 @@ import java.util.Map;
 public class TaskController {
 
     private final TaskQueueService taskQueueService;
+    private final DeviceRegistrationService devices;
 
     @GetMapping("/get-task")
-    public ResponseEntity<?> getTask(@RequestParam("device_id") String deviceId,
-                                     @RequestParam(value = "user_no", required = false) Integer userNo) {
-        Map<String, Object> task = taskQueueService.getNextTask(deviceId, userNo);
+    public ResponseEntity<?> getTask(@RequestParam(value="device_id", required=false) String deviceId,
+                                     @RequestParam(value = "user_no", required = false) Integer userNo,
+                                     @RequestHeader(value="Authorization", required=false) String authorization) {
+        Map<String, Object> task = authorization == null ? taskQueueService.getNextTask(deviceId, userNo)
+                : taskQueueService.getNextTask(devices.require(authorization, DeviceRole.CAMERA, userNo));
         return task == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(task);
     }
 
@@ -27,18 +30,24 @@ public class TaskController {
     }
 
     @PostMapping("/face/tasks/{taskId}/lease")
-    public Map<String, String> renewLease(@PathVariable String taskId, @RequestBody Map<String, Object> body) {
-        taskQueueService.renewLease(taskId, string(body, "device_id"), string(body, "lease_token"));
+    public Map<String, String> renewLease(@PathVariable String taskId, @RequestBody Map<String, Object> body,
+            @RequestHeader(value="Authorization", required=false) String authorization) {
+        if (authorization == null) taskQueueService.renewLease(taskId, string(body, "device_id"), string(body, "lease_token"));
+        else taskQueueService.renewLease(taskId, devices.require(authorization, DeviceRole.CAMERA, null), string(body, "lease_token"));
         return Map.of("status", "success");
     }
 
     @PostMapping("/result")
-    public Map<String, String> receiveResult(@RequestBody Map<String, Object> body) {
+    public Map<String, String> receiveResult(@RequestBody Map<String, Object> body,
+            @RequestHeader(value="Authorization", required=false) String authorization) {
         if (!(body.get("result") instanceof Map<?, ?> result)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "result 객체가 필요합니다.");
         }
-        taskQueueService.recordResult(string(body, "task_id"), string(body, "type"),
+        if (authorization == null) taskQueueService.recordResult(string(body, "task_id"), string(body, "type"),
                 string(body, "device_id"), string(body, "lease_token"),
+                string(result, "status"), string(result, "message"));
+        else taskQueueService.recordResult(string(body, "task_id"), string(body, "type"),
+                devices.require(authorization, DeviceRole.CAMERA, null), string(body, "lease_token"),
                 string(result, "status"), string(result, "message"));
         return Map.of("status", "success");
     }

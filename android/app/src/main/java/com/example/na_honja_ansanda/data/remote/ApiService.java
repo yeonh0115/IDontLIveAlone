@@ -4,6 +4,8 @@ import com.example.na_honja_ansanda.data.model.IntegratedLog;
 import com.example.na_honja_ansanda.data.model.FaceTaskResponse;
 import com.example.na_honja_ansanda.data.model.ReportResponse;
 import com.example.na_honja_ansanda.data.model.User;
+import com.example.na_honja_ansanda.data.model.DeviceInfo;
+import com.example.na_honja_ansanda.dto.DeviceClaimRequest;
 import com.example.na_honja_ansanda.dto.DoorLockRequest;
 import com.example.na_honja_ansanda.dto.LoginRequest;
 import com.example.na_honja_ansanda.dto.SignUpRequest;
@@ -21,11 +23,28 @@ import retrofit2.http.POST;
 import retrofit2.http.Part;
 import retrofit2.http.Path;
 import retrofit2.http.Query;
+import retrofit2.http.Header;
+import retrofit2.http.DELETE;
 
 public interface ApiService {
 
     @POST("api/users/login")
     Call<User> login(@Body LoginRequest request);
+
+    @POST("api/users/logout")
+    Call<Void> logout(@Header("Authorization") String authorization);
+
+    @GET("api/devices/pairing/{code}")
+    Call<DeviceInfo> previewDevice(@Header("Authorization") String authorization, @Path("code") String code);
+
+    @POST("api/devices/claim")
+    Call<DeviceInfo> claimDevice(@Header("Authorization") String authorization, @Body DeviceClaimRequest request);
+
+    @GET("api/devices")
+    Call<List<DeviceInfo>> getDevices(@Header("Authorization") String authorization);
+
+    @DELETE("api/devices/{deviceId}")
+    Call<Void> unlinkDevice(@Header("Authorization") String authorization, @Path("deviceId") String deviceId);
 
     @POST("api/users/sign-up")
     Call<ResponseBody> signup(@Body SignUpRequest request);

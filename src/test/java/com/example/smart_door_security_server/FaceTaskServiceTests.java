@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class FaceTaskServiceTests {
     private static final String DEVICE = "door-camera-a";
     @Autowired TaskQueueService service;
+    @Autowired DeviceRegistrationService devices;
     @Autowired FaceTaskRepository tasks;
     @Autowired FaceInfoRepository faces;
     @Autowired UserRepository users;
@@ -179,7 +180,7 @@ class FaceTaskServiceTests {
     @Test
     void httpContractReturnsAcceptedAndRequiresNestedResultWithLease() throws Exception {
         User owner = owner();
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new FaceRegisterController(service), new TaskController(service)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new FaceRegisterController(service), new TaskController(service, devices)).build();
         mvc.perform(multipart("/api/face/register").file(image("file1")).file(image("file2")).file(image("file3"))
                         .param("userId", owner.getUserId()))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.taskId").isString())
@@ -213,18 +214,10 @@ class FaceTaskServiceTests {
     }
 
     private FaceTask queued(User owner) {
-        FaceTask task = new FaceTask();
-        task.setTaskId(UUID.randomUUID().toString());
-        task.setUserId(owner.getUserId());
-        task.setUserNo(owner.getUserNo());
-        task.setImageUrl1("/pictures/test/1.jpg");
-        task.setImageUrl2("/pictures/test/2.jpg");
-        task.setImageUrl3("/pictures/test/3.jpg");
-        task.setStatus(FaceTaskStatus.QUEUED);
-        task.setMessage("queued");
-        task.setCreatedAt(Instant.now());
-        task.setUpdatedAt(Instant.now());
-        return tasks.saveAndFlush(task);
+        try {
+            var registered = service.registerFace(owner.getUserId(), images());
+            return tasks.findById(registered.taskId()).orElseThrow();
+        } catch (Exception ex) { throw new IllegalStateException("Could not prepare training images", ex); }
     }
 
     private void expire(String taskId) {

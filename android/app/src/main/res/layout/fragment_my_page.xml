@@ -77,7 +77,15 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- ✨ 카드 1: 앱 관리 및 최적화 (귀찮은 구현 없는 진짜 기능) -->
+            <Button
+                android:id="@+id/btn_device_link"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginBottom="16dp"
+                android:text="기기 연결 · 연결코드 입력"
+                android:textSize="16sp" />
+
+            <!-- 앱 관리 -->
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

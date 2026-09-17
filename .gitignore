@@ -49,5 +49,17 @@ out/
 raspberrypi/trainer/
 raspberrypi/facedata/
 raspberrypi/task_state/
+raspberrypi/capture_state/
+**/device_state/
+**/credentials.json
+**/pairing-code.json
+**/paired-owner.json
+**/.credentials.lock
+deployment/local-payload/
+**/*.installing
+**/capture_state/
+**/outbox/
+**/quarantine/
+**/receipts/
 *.jks
 *.keystore

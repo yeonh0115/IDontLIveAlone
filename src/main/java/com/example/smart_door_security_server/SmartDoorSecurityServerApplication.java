@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import java.util.TimeZone; // 추가됨
 
 @SpringBootApplication
+@org.springframework.scheduling.annotation.EnableScheduling
 public class SmartDoorSecurityServerApplication {
 
     @PostConstruct

@@ -8,6 +8,9 @@ import org.springframework.web.socket.handler.BinaryWebSocketHandler;
 
 @Component // 👈 필수! 스프링 빈으로 등록해야 WebConfig에서 주입을 받습니다.
 public class CameraWebSocketHandler extends BinaryWebSocketHandler {
+    private DeviceRegistrationService devices;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setDevices(DeviceRegistrationService devices) { this.devices = devices; }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -17,13 +20,25 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
         try {
+            Integer owner = session == null ? null : (Integer) session.getAttributes().get("cameraOwner");
+            if (owner != null) {
+                long nextCheck = (long) session.getAttributes().getOrDefault("nextIdentityCheck", 0L);
+                if (System.currentTimeMillis() >= nextCheck) {
+                    var identity = devices.require(session.getHandshakeHeaders().getFirst("Authorization"), DeviceRole.CAMERA, owner);
+                    if (!identity.deviceId().equals(session.getAttributes().get("cameraDevice"))) {
+                        session.close(CloseStatus.POLICY_VIOLATION); return;
+                    }
+                    session.getAttributes().put("nextIdentityCheck", System.currentTimeMillis() + 2000);
+                }
+            }
             var payload = message.getPayload().asReadOnlyBuffer();
             byte[] imageBytes = new byte[payload.remaining()];
             payload.get(imageBytes);
-            VideoStreamingController.updateFrameDirectly(imageBytes);
+            VideoStreamingController.updateOwnerFrame(owner, imageBytes);
+        } catch (org.springframework.web.server.ResponseStatusException revoked) {
+            session.close(CloseStatus.POLICY_VIOLATION);
         } catch (Exception e) {
-            System.err.println("[카메라 웹소켓 에러] 데이터 처리 중 예외 발생: " + e.getMessage());
-            e.printStackTrace();
+            if (session != null) session.close(CloseStatus.SERVER_ERROR);
         }
     }
 

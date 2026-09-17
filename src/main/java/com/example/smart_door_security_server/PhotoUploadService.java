@@ -29,17 +29,21 @@ public class PhotoUploadService {
     private final DailyReportRepository reports;
     private final EventPhotoRepository photos;
     private final IntegratedLogRepository logs;
+    private final DeviceEventReceiptRepository deviceEvents;
+    private final EventPhotoSettings settings;
     private final Path uploadDir;
     private final String publicBaseUrl;
 
     public PhotoUploadService(UserRepository users, DailyReportRepository reports,
-            EventPhotoRepository photos, IntegratedLogRepository logs,
+            EventPhotoRepository photos, IntegratedLogRepository logs, DeviceEventReceiptRepository deviceEvents, EventPhotoSettings settings,
             @Value("${app.storage-dir:./data}") String storageDir,
             @Value("${app.public-base-url:https://idontlivealone.onrender.com}") String publicBaseUrl) {
         this.users = users;
         this.reports = reports;
         this.photos = photos;
         this.logs = logs;
+        this.deviceEvents = deviceEvents;
+        this.settings = settings;
         this.uploadDir = Path.of(storageDir).toAbsolutePath().normalize().resolve("uploads");
         this.publicBaseUrl = publicBaseUrl.replaceAll("/+$", "");
     }
@@ -48,6 +52,7 @@ public class PhotoUploadService {
 
     @Transactional
     public UploadResult save(MultipartFile file, Integer userNo, String eventId, LocalDate date) {
+        settings.requireEnabled();
         if (userNo == null || userNo <= 0 || date == null || eventId == null
                 || !eventId.matches("[A-Za-z0-9_-]{1,100}")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "유효한 사용자와 이벤트 정보가 필요합니다.");
@@ -61,6 +66,10 @@ public class PhotoUploadService {
             String url = existing.getPhotoUrl();
             return new UploadResult(url, url.substring(url.lastIndexOf('/') + 1), true);
         }
+
+        // A delayed photo belongs to the authenticated event's KST date, not the retry date.
+        LocalDate eventDate = deviceEvents.findByUserNoAndSourceEventId(userNo, eventId)
+                .map(DeviceEventReceipt::getEventDate).orElse(date);
 
         BufferedImage image = readImage(file);
         String filename = UUID.randomUUID() + ".jpg";
@@ -84,11 +93,11 @@ public class PhotoUploadService {
         try {
             String url = publicBaseUrl + "/uploads/" + filename;
             List<IntegratedLog> dayLogs = logs.findByUserNoAndCreatedAtBetweenOrderByCreatedAtDesc(
-                    userNo, date.atStartOfDay(), date.atTime(LocalTime.MAX));
-            DailyReport report = reports.findByUserAndReportDate(user, date).orElseGet(() -> {
+                    userNo, eventDate.atStartOfDay(), eventDate.atTime(LocalTime.MAX));
+            DailyReport report = reports.findByUserAndReportDate(user, eventDate).orElseGet(() -> {
                 DailyReport created = new DailyReport();
                 created.setUser(user);
-                created.setReportDate(date);
+                created.setReportDate(eventDate);
                 created.setReportText("이벤트 사진이 저장되었습니다. 위험 여부는 감지 로그를 확인해 주세요.");
                 return created;
             });
@@ -106,7 +115,7 @@ public class PhotoUploadService {
             EventPhoto photo = new EventPhoto();
             photo.setUserNo(userNo);
             photo.setSourceEventId(eventId);
-            photo.setEventDate(date);
+            photo.setEventDate(eventDate);
             photo.setPhotoUrl(url);
             photos.saveAndFlush(photo);
             return new UploadResult(url, filename, false);

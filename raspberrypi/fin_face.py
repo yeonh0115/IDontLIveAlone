@@ -20,9 +20,9 @@ settings = Settings()
 MODEL_PATH = settings.data_dir / "trainer" / "trainer.yml"
 MAP_FILE_PATH = settings.data_dir / "trainer" / "user_map.txt"
 FACEDATA_DIR = settings.data_dir / "facedata"
-THRESHOLD = 85
-REQUIRED_CONSECUTIVE_SUCCESS = 4
-SOLENOID_PIN = 23
+THRESHOLD = settings.face_threshold
+REQUIRED_CONSECUTIVE_SUCCESS = settings.face_required_successes
+SOLENOID_PIN = settings.solenoid_pin
 
 frames = LatestFrame()
 stop_event = threading.Event()
@@ -221,9 +221,10 @@ class LeaseHeartbeat:
                     response = heartbeat_session.post(
                         settings.api_url(f"/api/face/tasks/{self.task['task_id']}/lease"),
                         json={"device_id": settings.device_id, "lease_token": self.task["lease_token"]},
+                        headers=settings.auth_headers(),
                         timeout=5,
                     )
-                    if response.status_code == 409:
+                    if response.status_code in (401, 403, 409):
                         self.lost.set()
                         return
                     if response.status_code == 200:
@@ -258,7 +259,10 @@ def process_train(task, session, lease):
             samples_saved = 0
             for index, url in enumerate(urls):
                 lease.assert_owned()
-                response = session.get(settings.api_url(url), timeout=10)
+                image_url = settings.api_url(url)
+                if not image_url.startswith(settings.server_url + "/"):
+                    raise ValueError("Training images must come from the configured server")
+                response = session.get(image_url, headers=settings.auth_headers(), timeout=10)
                 response.raise_for_status()
                 image = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
                 if image is None:
@@ -327,7 +331,7 @@ def watch_render_server():
     state = TaskState(settings.data_dir / "task_state")
     with requests.Session() as session:
         def post_result(payload):
-            response = session.post(settings.api_url("/api/result"), json=payload, timeout=5)
+            response = session.post(settings.api_url("/api/result"), json=payload, headers=settings.auth_headers(), timeout=5)
             try:
                 body = response.json()
             except ValueError:
@@ -368,7 +372,7 @@ def watch_render_server():
                     stop_event.wait(3)
                     continue
                 claim_started = time.monotonic()
-                response = session.get(settings.api_url("/api/get-task"), params=settings.task_params(), timeout=5)
+                response = session.get(settings.api_url("/api/get-task"), params=settings.task_params(), headers=settings.auth_headers(), timeout=5)
                 if response.status_code == 204:
                     stop_event.wait(1)
                     continue
@@ -400,10 +404,15 @@ def watch_render_server():
                 stop_event.wait(3)
             stop_event.wait(1)
 
+def start_cloud_tasks():
+    settings.activate_pairing()
+    watch_render_server()
+
+
 if __name__ == "__main__":
     initialize()
     threading.Thread(target=frame_reader, daemon=True).start()
-    threading.Thread(target=watch_render_server, daemon=True).start()
+    threading.Thread(target=start_cloud_tasks, daemon=True).start()
     try:
         real_time_recognition_loop()
     except KeyboardInterrupt:

@@ -11,6 +11,11 @@ public class User {
     @SerializedName("email") private String email;
     @SerializedName("doorPassword") private String doorPassword;
     @SerializedName("createdAt") private String createdAt;
+    @SerializedName("sessionToken") private String sessionToken;
+    @SerializedName("sessionExpiresAt") private String sessionExpiresAt;
+
+    public String getSessionToken() { return sessionToken; }
+    public void setSessionToken(String token) { this.sessionToken = token; }
 
     // 💡 핵심: Gson 변환 및 튕김 방지를 위한 avatar 필드 정상 정의
     @SerializedName("avatar") private String avatar;

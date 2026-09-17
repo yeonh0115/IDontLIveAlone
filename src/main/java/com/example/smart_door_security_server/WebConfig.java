@@ -22,6 +22,7 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
     // 같은 패키지 안의 @Component 빈을 자동으로 주입받습니다.
     private final AudioStreamHandler audioStreamHandler;
     private final CameraWebSocketHandler cameraWebSocketHandler;
+    private final CameraHandshakeInterceptor cameraHandshakeInterceptor;
 
     @Value("${app.storage-dir:./data}")
     private String storageDir;
@@ -46,8 +47,10 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
                 .addResourceLocations(picturesLocation, new File("pictures").toURI().toString());
 
         // /uploads/** 요청 처리 (404 에러 방지)
+        // Older report URLs also resolved files stored under pictures; preserve that fallback.
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations(uploadsLocation, new File("uploads").toURI().toString());
+                .addResourceLocations(uploadsLocation, new File("uploads").toURI().toString(),
+                        picturesLocation, new File("pictures").toURI().toString());
 
         System.out.println("[WebConfig] 📂 정적 리소스 로딩 디렉토리: " + baseDir);
         System.out.println("[WebConfig] 🔗 /pictures/ 및 /uploads/ 매핑 완료");
@@ -69,6 +72,7 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
 
         // 카메라 웹소켓
         registry.addHandler(cameraWebSocketHandler, "/ws/camera")
+                .addInterceptors(cameraHandshakeInterceptor)
                 .setAllowedOrigins("*");
     }
 

@@ -26,6 +26,7 @@ public class User {
     private String userId;
 
     @Column(name = "password_hash")
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String passwordHash;
 
     @Column(name = "username")

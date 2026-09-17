@@ -12,14 +12,29 @@ import java.util.Map;
 @RequestMapping("/api")
 public class ImageUploadController {
     private final PhotoUploadService photoUploadService;
+    private final DeviceRegistrationService devices;
+    private final CameraPhotoService cameraPhotos;
+    private final EventPhotoSettings settings;
 
     @PostMapping("/upload")
     public Map<String, Object> uploadImage(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("userNo") Integer userNo,
+            @RequestParam(value="userNo", required=false) Integer userNo,
             @RequestParam("log_id") String logId,
-            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        PhotoUploadService.UploadResult result = photoUploadService.save(file, userNo, logId, date);
+            @RequestParam(value="date", required=false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(value="captureTaskId", required=false) String captureTaskId,
+            @RequestParam(value="leaseToken", required=false) String leaseToken,
+            @RequestHeader(value="Authorization", required=false) String authorization) {
+        settings.requireEnabled();
+        PhotoUploadService.UploadResult result;
+        if (authorization != null) {
+            var camera = devices.require(authorization, DeviceRole.CAMERA, userNo);
+            result = captureTaskId == null ? photoUploadService.save(file, camera.userNo(), logId, date)
+                    : cameraPhotos.save(camera, file, logId, captureTaskId, leaseToken);
+        } else {
+            if (captureTaskId != null || devices.hasRole(userNo, DeviceRole.CAMERA)) throw TokenSecrets.unauthorized();
+            result = photoUploadService.save(file, userNo, logId, date);
+        }
         return Map.of("success", true, "url", result.url(),
                 "filename", result.filename(), "duplicate", result.duplicate());
     }

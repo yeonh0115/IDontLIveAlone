@@ -17,6 +17,13 @@ public class VideoStreamingController {
     // 💡 라즈베리파이(로컬)가 보낸 최신 JPEG 이미지를 임시 보관할 바이트 배열
     private record Frame(byte[] jpeg, long updatedAt) {}
     private static volatile Frame currentFrame;
+    private static final java.util.concurrent.ConcurrentMap<Integer, Frame> ownerFrames = new java.util.concurrent.ConcurrentHashMap<>();
+    private AppSessionService sessions;
+    private DeviceRegistrationService devices;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAccess(AppSessionService sessions, DeviceRegistrationService devices) {
+        this.sessions = sessions; this.devices = devices;
+    }
 
     /**
      * ⚡ [추가] 웹소켓 핸들러(CameraWebSocketHandler)에서 리플렉션 없이 
@@ -26,20 +33,34 @@ public class VideoStreamingController {
         currentFrame = new Frame(imageBytes.clone(), System.currentTimeMillis());
     }
 
+    public static void updateOwnerFrame(Integer owner, byte[] imageBytes) {
+        if (owner == null) updateFrameDirectly(imageBytes);
+        else ownerFrames.put(owner, new Frame(imageBytes.clone(), System.currentTimeMillis()));
+    }
+    public static void clearOwnerFrame(Integer owner) { ownerFrames.remove(owner); }
+
     /**
      * 1. 로컬 라즈베리파이(fin_camera.py)가 비디오 프레임을 업로드하는 API
      */
     @PostMapping(value = "/upload_frame", consumes = MediaType.IMAGE_JPEG_VALUE)
-    public ResponseEntity<String> uploadFrame(@RequestBody byte[] imageBytes) {
-        updateFrameDirectly(imageBytes);
+    public ResponseEntity<String> uploadFrame(@RequestBody byte[] imageBytes,
+            @RequestHeader(value="Authorization", required=false) String authorization) {
+        Integer owner = authorization == null ? null : devices.require(authorization, DeviceRole.CAMERA, null).userNo();
+        updateOwnerFrame(owner, imageBytes);
         return new ResponseEntity<>("{\"status\":\"success\"}", HttpStatus.OK);
     }
 
     /**
      * 2. 스마트폰 앱이 MJPEG 형식의 실시간 카메라 비디오를 받아가는 스트리밍 API
      */
-    @GetMapping("/video_feed")
     public ResponseEntity<StreamingResponseBody> getVideoFeed() {
+        return getVideoFeed(null);
+    }
+
+    @GetMapping("/video_feed")
+    public ResponseEntity<StreamingResponseBody> getVideoFeed(
+            @RequestHeader(value="Authorization", required=false) String authorization) {
+        Integer owner = authorization == null ? null : sessions.requireUser(authorization);
         
         // MJPEG(Motion JPEG) 표준에 부합하도록 멀티파트(boundary=frame) 타입 지정
         HttpHeaders headers = new HttpHeaders();
@@ -51,9 +72,15 @@ public class VideoStreamingController {
             @Override
             public void writeTo(OutputStream out) throws IOException {
                 Frame lastSent = null;
+                long nextSessionCheck = System.currentTimeMillis() + 10000;
                 while (true) {
                     long now = System.currentTimeMillis();
-                    Frame frame = currentFrame;
+                    if (owner != null && now >= nextSessionCheck) {
+                        try { sessions.requireUser(authorization); }
+                        catch (org.springframework.web.server.ResponseStatusException revoked) { break; }
+                        nextSessionCheck = now + 10000;
+                    }
+                    Frame frame = owner == null ? currentFrame : ownerFrames.get(owner);
                     
                     // 💡 카메라 전송이 끊겼거나(3초 이상 무응답) 프레임이 비어있으면 0.1초 쉬었다가 다시 확인
                     if (frame == null || frame == lastSent || (now - frame.updatedAt() > 3000)) {

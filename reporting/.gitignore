@@ -1,0 +1,10 @@
+outbox/
+state/
+device_state/
+quarantine/
+*.lock
+*.tmp
+.env
+.env.*
+!.env.example
+__pycache__/
