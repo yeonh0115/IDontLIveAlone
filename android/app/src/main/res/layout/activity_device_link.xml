@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="#F4F7FC" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="24dp">
+        <Button android:id="@+id/btn_device_back" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="뒤로" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="기기 연결"
+            android:textSize="26sp" android:textStyle="bold" android:textColor="#191F28" android:layout_marginTop="16dp" />
+        <TextView android:id="@+id/tv_device_account" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textSize="16sp" android:textColor="#3182F6" android:layout_marginTop="12dp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="기기나 PC에서 표시한 8자리 연결코드를 입력하세요. SD 카드를 준비하며 PC에서 발급한 코드도 사용할 수 있습니다."
+            android:textSize="15sp" android:textColor="#4E5968" android:layout_marginTop="12dp" />
+        <EditText android:id="@+id/et_device_code" android:layout_width="match_parent" android:layout_height="64dp"
+            android:hint="8자리 연결코드" android:inputType="number" android:digits="0123456789" android:maxLength="8"
+            android:importantForAutofill="no" android:textSize="24sp" android:singleLine="true" android:layout_marginTop="16dp" />
+        <Button android:id="@+id/btn_lookup_device" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="연결할 기기 확인" />
+        <LinearLayout android:id="@+id/layout_device_preview" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="20dp" android:background="#FFFFFF" android:layout_marginTop="16dp" android:visibility="gone">
+            <TextView android:id="@+id/tv_device_preview" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textSize="17sp" android:textColor="#191F28" />
+            <Button android:id="@+id/btn_claim_device" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="이 계정에 연결" android:layout_marginTop="16dp" />
+        </LinearLayout>
+        <TextView android:id="@+id/tv_device_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:accessibilityLiveRegion="polite" android:textSize="14sp" android:textColor="#4E5968" android:layout_marginTop="16dp" />
+        <Button android:id="@+id/btn_device_login" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="다시 로그인" android:visibility="gone" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="연결한 기기"
+            android:textSize="20sp" android:textStyle="bold" android:textColor="#191F28" android:layout_marginTop="28dp" />
+        <Button android:id="@+id/btn_refresh_devices" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="연결 목록 새로고침" />
+        <LinearLayout android:id="@+id/layout_linked_devices" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    </LinearLayout>
+</ScrollView>

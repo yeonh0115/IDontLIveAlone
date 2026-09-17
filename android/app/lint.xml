@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+        Glide 4.15.1 bundles NotificationTarget, but this app only loads images
+        into ImageViews and never uses that target or posts notifications.
+        Match this dependency diagnostic only; keep notification permission
+        checks enabled for app code and every other dependency.
+        https://github.com/bumptech/glide/issues/4940
+        Remove this exception if NotificationTarget is used in the app.
+    -->
+    <issue id="NotificationPermission">
+        <ignore regexp="\Q(usage from com.bumptech.glide.request.target.NotificationTarget)\E" />
+    </issue>
+</lint>

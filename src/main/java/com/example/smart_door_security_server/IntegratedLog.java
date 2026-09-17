@@ -4,8 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Entity
 @Table(name = "integrated_logs")
@@ -42,9 +42,14 @@ public class IntegratedLog {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
-    @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @PrePersist
+    void ensureCreatedAt() {
+        // Preserve an authenticated device's occurrence time when retrying an older event.
+        if (createdAt == null) createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+    }
 
     public enum LogType {
         SECURITY, SENSOR, ENV

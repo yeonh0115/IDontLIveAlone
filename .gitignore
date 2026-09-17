@@ -35,3 +35,31 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# Local runtime state and credentials
+/data/
+/pictures/
+/uploads/
+.env
+.env.*
+!.env.example
+**/local.properties
+**/__pycache__/
+**/*.pyc
+raspberrypi/trainer/
+raspberrypi/facedata/
+raspberrypi/task_state/
+raspberrypi/capture_state/
+**/device_state/
+**/credentials.json
+**/pairing-code.json
+**/paired-owner.json
+**/.credentials.lock
+deployment/local-payload/
+**/*.installing
+**/capture_state/
+**/outbox/
+**/quarantine/
+**/receipts/
+*.jks
+*.keystore

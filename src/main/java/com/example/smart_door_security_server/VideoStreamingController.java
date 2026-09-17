@@ -15,33 +15,52 @@ import java.io.OutputStream;
 public class VideoStreamingController {
 
     // 💡 라즈베리파이(로컬)가 보낸 최신 JPEG 이미지를 임시 보관할 바이트 배열
-    private static volatile byte[] currentFrame = null;
-    private static volatile long lastUpdateTime = 0;
+    private record Frame(byte[] jpeg, long updatedAt) {}
+    private static volatile Frame currentFrame;
+    private static final java.util.concurrent.ConcurrentMap<Integer, Frame> ownerFrames = new java.util.concurrent.ConcurrentHashMap<>();
+    private AppSessionService sessions;
+    private DeviceRegistrationService devices;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAccess(AppSessionService sessions, DeviceRegistrationService devices) {
+        this.sessions = sessions; this.devices = devices;
+    }
 
     /**
      * ⚡ [추가] 웹소켓 핸들러(CameraWebSocketHandler)에서 리플렉션 없이 
      * 안전하고 빠르게 프레임 데이터를 직접 갱신하기 위한 static 메서드입니다.
      */
     public static void updateFrameDirectly(byte[] imageBytes) {
-        currentFrame = imageBytes;
-        lastUpdateTime = System.currentTimeMillis();
+        currentFrame = new Frame(imageBytes.clone(), System.currentTimeMillis());
     }
+
+    public static void updateOwnerFrame(Integer owner, byte[] imageBytes) {
+        if (owner == null) updateFrameDirectly(imageBytes);
+        else ownerFrames.put(owner, new Frame(imageBytes.clone(), System.currentTimeMillis()));
+    }
+    public static void clearOwnerFrame(Integer owner) { ownerFrames.remove(owner); }
 
     /**
      * 1. 로컬 라즈베리파이(fin_camera.py)가 비디오 프레임을 업로드하는 API
      */
     @PostMapping(value = "/upload_frame", consumes = MediaType.IMAGE_JPEG_VALUE)
-    public ResponseEntity<String> uploadFrame(@RequestBody byte[] imageBytes) {
-        currentFrame = imageBytes;
-        lastUpdateTime = System.currentTimeMillis();
+    public ResponseEntity<String> uploadFrame(@RequestBody byte[] imageBytes,
+            @RequestHeader(value="Authorization", required=false) String authorization) {
+        Integer owner = authorization == null ? null : devices.require(authorization, DeviceRole.CAMERA, null).userNo();
+        updateOwnerFrame(owner, imageBytes);
         return new ResponseEntity<>("{\"status\":\"success\"}", HttpStatus.OK);
     }
 
     /**
      * 2. 스마트폰 앱이 MJPEG 형식의 실시간 카메라 비디오를 받아가는 스트리밍 API
      */
-    @GetMapping("/video_feed")
     public ResponseEntity<StreamingResponseBody> getVideoFeed() {
+        return getVideoFeed(null);
+    }
+
+    @GetMapping("/video_feed")
+    public ResponseEntity<StreamingResponseBody> getVideoFeed(
+            @RequestHeader(value="Authorization", required=false) String authorization) {
+        Integer owner = authorization == null ? null : sessions.requireUser(authorization);
         
         // MJPEG(Motion JPEG) 표준에 부합하도록 멀티파트(boundary=frame) 타입 지정
         HttpHeaders headers = new HttpHeaders();
@@ -52,13 +71,21 @@ public class VideoStreamingController {
         StreamingResponseBody responseBody = new StreamingResponseBody() {
             @Override
             public void writeTo(OutputStream out) throws IOException {
+                Frame lastSent = null;
+                long nextSessionCheck = System.currentTimeMillis() + 10000;
                 while (true) {
                     long now = System.currentTimeMillis();
+                    if (owner != null && now >= nextSessionCheck) {
+                        try { sessions.requireUser(authorization); }
+                        catch (org.springframework.web.server.ResponseStatusException revoked) { break; }
+                        nextSessionCheck = now + 10000;
+                    }
+                    Frame frame = owner == null ? currentFrame : ownerFrames.get(owner);
                     
                     // 💡 카메라 전송이 끊겼거나(3초 이상 무응답) 프레임이 비어있으면 0.1초 쉬었다가 다시 확인
-                    if (currentFrame == null || (now - lastUpdateTime > 3000)) {
+                    if (frame == null || frame == lastSent || (now - frame.updatedAt() > 3000)) {
                         try {
-                            Thread.sleep(100);
+                            Thread.sleep(20);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             break;
@@ -70,19 +97,20 @@ public class VideoStreamingController {
                         // MJPEG 경계(boundary) 및 헤더 작성
                         out.write(("--frame\r\n" +
                                    "Content-Type: image/jpeg\r\n" +
-                                   "Content-Length: " + currentFrame.length + "\r\n\r\n").getBytes());
+                                   "Content-Length: " + frame.jpeg().length + "\r\n\r\n").getBytes());
                         
                         // 실제 JPEG 이미지 바이너리 데이터 출력
-                        out.write(currentFrame);
+                        out.write(frame.jpeg());
                         out.write("\r\n\r\n".getBytes());
                         out.flush(); // 即시 버퍼를 밀어서 스마트폰 앱으로 지연 없이 전송
+                        lastSent = frame;
                         
                     } catch (IOException e) {
                         // 스마트폰 앱이 화면을 끄거나 연결을 해제하면 전송 루프를 탈출하여 리소스를 해제합니다.
                         break;
                     }
 
-                    // 💡 전송 속도 조절 (약 20 FPS 전송으로 스프링 부트 메모리/CPU 부하를 제어합니다)
+                    // Send each captured frame once; yield between frames.
                     try {
                         Thread.sleep(10);
                     } catch (InterruptedException e) {

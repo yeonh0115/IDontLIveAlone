@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_home"
+        android:title="홈"
+        android:icon="@android:drawable/ic_menu_today" />
+
+    <item
+        android:id="@+id/nav_report"
+        android:title="리포트"
+        android:icon="@android:drawable/ic_menu_sort_by_size" /> <item
+    android:id="@+id/nav_security"
+    android:title="보안 설정"
+    android:icon="@android:drawable/ic_lock_lock" />
+
+    <item
+        android:id="@+id/nav_mypage"
+        android:title="마이페이지"
+        android:icon="@android:drawable/ic_menu_view" />
+</menu>
