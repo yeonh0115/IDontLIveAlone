@@ -13,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +31,7 @@ class PhotoUploadServiceTests {
     @Autowired EventPhotoRepository photos;
     @Autowired IntegratedLogRepository logs;
     @Autowired DailyReportController controller;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private User newUser() {
         User user = new User();
@@ -88,7 +90,7 @@ class PhotoUploadServiceTests {
 
     @Test void laterPhotosRefreshCountsFromActualOwnerLogs() throws Exception {
         User owner = newUser();
-        LocalDate date = LocalDate.now();
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul"));
         service.save(jpeg(), owner.getUserNo(), "before-log", date);
         IntegratedLog event = new IntegratedLog();
         event.setUserNo(owner.getUserNo());
@@ -100,6 +102,23 @@ class PhotoUploadServiceTests {
         assertEquals(1, report.getTotalEvents());
         assertEquals(1, report.getHighRiskEvents());
         assertEquals(2, report.getPhotoUrl().split(",").length);
+    }
+
+    @Test void calendarDateDoesNotDriftBetweenJdbcStorageAndRepeatedReportUpdates() throws Exception {
+        User owner = newUser();
+        LocalDate requestedDate = LocalDate.of(2026, 1, 2);
+        Integer reportId = null;
+        for (int i = 0; i < 3; i++) {
+            service.save(jpeg(), owner.getUserNo(), "date-round-trip-" + i, requestedDate);
+            DailyReport report = reports.findByUserAndReportDate(owner, requestedDate).orElseThrow();
+            if (reportId == null) reportId = report.getId();
+            assertEquals(reportId, report.getId());
+            assertEquals(requestedDate, report.getReportDate());
+            // Read the DB calendar date as text so a JDBC Date conversion cannot mask a shift.
+            assertEquals("2026-01-02", jdbc.queryForObject(
+                    "select cast(report_date as varchar) from daily_reports where id=?", String.class, reportId));
+        }
+        assertEquals(1, reports.findByUser_UserNoOrderByReportDateDesc(owner.getUserNo()).size());
     }
 
     @Test void ownerAndRealImageAreRequired() throws Exception {

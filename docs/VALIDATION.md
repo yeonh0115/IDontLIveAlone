@@ -2,7 +2,7 @@
 
 | 검사 | 결과 |
 | --- | --- |
-| 서버 `test bootJar` | 47개 통과, 실패·오류·skip 0, 실행 JAR 생성 |
+| 서버 `clean build` | UTC·Asia/Seoul 각각 48개 통과, 실패·오류·skip 0, 실행 JAR 생성 |
 | Android `assembleDebug testDebugUnitTest lintDebug` | 빌드 성공, 14개 통과, lint 오류 0·경고 194 |
 | Pi A 모의 테스트 | 33개 통과 |
 | Pi B 모의 테스트 | 13개 통과 |
@@ -28,11 +28,13 @@ PC 리포트 테스트는 유료 OpenAI 요청을 실행하지 않습니다. 로
 
 ## 실제 적용 진행 기록
 
-2026-09-17 배포 전 체크포인트: 로컬 코드 검증과 운영 DB 백업 완료. Render 새 배포·SD 설치 적용은 아직 진행 전이며, 이 문서의 테스트 결과와 혼동하지 않습니다. 실제 카메라·문 잠금 결선·얼굴 인식률·휴대폰 동작은 별도 현장 확인이 필요합니다.
+2026-09-17 운영 DB 백업 후 첫 Render 배포(`3782e4b`)는 테스트 5개 실패로 중단됐고 기존 운영 서버는 유지됐습니다. UTC 환경에서 같은 실패를 재현했습니다. DB 초기화 뒤 `@PostConstruct`에서 JVM 시간대를 변경해 JDBC의 날짜 변환 기준이 달라지는 것이 원인이었습니다. 시간대 설정을 `main`의 Spring 초기화 앞으로 이동하고, 반복 저장 때 실제 SQL DATE와 JPA 날짜가 유지되는 회귀 테스트를 추가했습니다. 테스트를 생략하지 않고 수정본을 재검증한 뒤 재배포합니다.
+
+SD 설치와 실제 카메라·문 잠금 결선·얼굴 인식률·휴대폰 동작은 별도 현장 확인이 필요합니다.
 
 ## 산출물 해시
 
-- 서버 JAR(56,960,840바이트): `faadbf49be09bfcbed6c16016b76eab831c29f6aea9b5ede7c8004127ddc2bed`
+- 서버 JAR(56,960,792바이트): `82ccc07c6173c4a90ef3b155c954ade2f25bea2b56ab0df5d5ac1da1ca5f9e7d`
 - Android debug APK: `906880a91c6dd678b032263add6977f4d135496e587a4115bbd503dfd581b9d1`
 
 Docker 실행기가 없어 로컬 컨테이너 빌드는 하지 않았습니다. Render 실제 빌드 결과를 별도로 확인해야 합니다. 상세 적용 순서는 [DEPLOYMENT.md](DEPLOYMENT.md)에 있습니다.
