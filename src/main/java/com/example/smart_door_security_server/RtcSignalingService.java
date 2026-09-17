@@ -50,7 +50,8 @@ public class RtcSignalingService {
         validateSdp(request, "offer");
         var camera = registered.findByUserNoAndRole(app.userNo(), DeviceRole.CAMERA)
                 .orElseThrow(RtcSignalingService::missing);
-        devices.requireCameraSession(camera.getDeviceId(), app.userNo(), camera.getTokenHash());
+        // The owner was just authenticated, and this query already restricts owner and CAMERA role.
+        // Capture its credential once rather than reading the same device/user again.
         synchronized (this) {
             Instant now = clock.instant(); cleanup(now);
             consumeRate("offer:" + app.userNo(), 10, now);
@@ -75,12 +76,20 @@ public class RtcSignalingService {
 
     public Status viewerStatus(String authorization, String id) {
         var app = appSessions.requireSession(authorization);
+        Call snapshot;
         synchronized (this) {
             Instant now = clock.instant(); cleanup(now); consumeRate("app:" + app.tokenHash(), 120, now);
-            Call call = viewerCall(id, app);
-            refresh(call, now);
-            if (call.active()) call.viewerUntil = now.plus(VIEWER_LEASE);
-            return call.view();
+            snapshot = viewerCall(id, app);
+            if (!snapshot.active()) return snapshot.view();
+        }
+        // Immutable call identities are safe to validate outside the state lock. The caller's
+        // app identity was already checked above; only the counterpart needs a DB read.
+        boolean cameraValid = cameraIsValid(snapshot);
+        synchronized (this) {
+            Instant now = clock.instant(); resume(snapshot, now);
+            applyValidation(snapshot, cameraValid && app.expiresAt().isAfter(now), now);
+            if (snapshot.active()) snapshot.viewerUntil = now.plus(VIEWER_LEASE);
+            return snapshot.view();
         }
     }
 
@@ -94,38 +103,69 @@ public class RtcSignalingService {
     }
 
     public Optional<Offer> next(String authorization) {
-        var camera = devices.require(authorization, DeviceRole.CAMERA, null);
+        var camera = devices.requireCameraCredential(authorization);
+        Call snapshot = null;
         synchronized (this) {
             Instant now = clock.instant(); cleanup(now); consumeRate("camera:" + camera.deviceId(), 120, now);
             for (Call call : calls.values()) {
                 if (!call.cameraId.equals(camera.deviceId()) || !call.active()) continue;
-                refresh(call, now);
-                if (call.status.equals("PENDING") && call.owner.equals(camera.userNo())) {
-                    return Optional.of(new Offer(call.id, "offer", call.offer, call.expiresAt()));
-                }
+                // This caller may have authenticated before a re-pair/rekey and before the
+                // new call was created. A mismatching snapshot must not close that newer call.
+                if (!sameCamera(call, camera)) return Optional.empty();
+                // READY has no pending offer to disclose. Its status endpoint still validates
+                // both peers on every access; polling next need only authenticate its caller.
+                if (!call.status.equals("PENDING")) return Optional.empty();
+                snapshot = call; break;
             }
-            return Optional.empty();
+            if (snapshot == null) return Optional.empty();
+        }
+        var creator = validatedCreator(snapshot);
+        synchronized (this) {
+            Instant now = clock.instant(); cleanup(now);
+            // An answer, close, replacement, expiration or eviction may have won while the
+            // DB was busy. Never publish an offer copied before that state transition.
+            if (calls.get(snapshot.id) != snapshot) return Optional.empty();
+            applyValidation(snapshot, creator != null && creator.expiresAt().isAfter(now), now);
+            if (!snapshot.status.equals("PENDING")) return Optional.empty();
+            return Optional.of(new Offer(snapshot.id, "offer", snapshot.offer, snapshot.expiresAt()));
         }
     }
 
     public Status cameraStatus(String authorization, String id) {
-        var camera = devices.require(authorization, DeviceRole.CAMERA, null);
+        var camera = devices.requireCameraCredential(authorization);
+        Call snapshot;
         synchronized (this) {
             Instant now = clock.instant(); cleanup(now); consumeRate("camera:" + camera.deviceId(), 120, now);
-            Call call = cameraCall(id, camera); refresh(call, now); return call.view();
+            snapshot = cameraCall(id, camera);
+            applyValidation(snapshot, sameCamera(snapshot, camera), now);
+            if (!snapshot.active()) return snapshot.view();
+        }
+        var creator = validatedCreator(snapshot);
+        synchronized (this) {
+            Instant now = clock.instant(); resume(snapshot, now);
+            applyValidation(snapshot, creator != null && creator.expiresAt().isAfter(now), now);
+            return snapshot.view();
         }
     }
 
     public void answer(String authorization, String id, SdpRequest request) {
-        var camera = devices.require(authorization, DeviceRole.CAMERA, null);
+        var camera = devices.requireCameraCredential(authorization);
         validateSdp(request, "answer");
+        Call snapshot;
         synchronized (this) {
             Instant now = clock.instant(); cleanup(now); consumeRate("camera:" + camera.deviceId(), 120, now);
-            Call call = cameraCall(id, camera); refresh(call, now);
-            if (call.status.equals("READY") && request.sdp().equals(call.answer)) return;
-            if (!call.status.equals("PENDING")) throw new ResponseStatusException(HttpStatus.CONFLICT, "영상 연결 상태가 변경되었습니다.");
-            call.answer = request.sdp(); call.offer = null; call.status = "READY";
-            call.hardUntil = now.plus(READY_LIFETIME);
+            snapshot = cameraCall(id, camera);
+            applyValidation(snapshot, sameCamera(snapshot, camera), now);
+            if (!snapshot.active()) throw conflict();
+        }
+        var creator = validatedCreator(snapshot);
+        synchronized (this) {
+            Instant now = clock.instant(); resume(snapshot, now);
+            applyValidation(snapshot, creator != null && creator.expiresAt().isAfter(now), now);
+            if (snapshot.status.equals("READY") && request.sdp().equals(snapshot.answer)) return;
+            if (!snapshot.status.equals("PENDING")) throw conflict();
+            snapshot.answer = request.sdp(); snapshot.offer = null; snapshot.status = "READY";
+            snapshot.hardUntil = now.plus(READY_LIFETIME);
         }
     }
 
@@ -134,22 +174,38 @@ public class RtcSignalingService {
         if (call == null || !call.owner.equals(app.userNo()) || !call.creatorHash.equals(app.tokenHash())) throw missing();
         return call;
     }
-    private Call cameraCall(String id, DeviceRegistrationService.DeviceIdentity camera) {
+    private Call cameraCall(String id, DeviceRegistrationService.CameraCredential camera) {
         Call call = calls.get(id);
         if (call == null || !call.cameraId.equals(camera.deviceId()) || !call.owner.equals(camera.userNo())) throw missing();
         return call;
     }
-    private void refresh(Call call, Instant now) {
-        if (!call.active()) return;
+    private boolean sameCamera(Call call, DeviceRegistrationService.CameraCredential camera) {
+        return call.owner.equals(camera.userNo()) && call.cameraId.equals(camera.deviceId())
+                && call.cameraHash.equals(camera.tokenHash());
+    }
+    private boolean cameraIsValid(Call call) {
         try {
-            appSessions.requireSessionHash(call.creatorHash, call.owner);
             devices.requireCameraSession(call.cameraId, call.owner, call.cameraHash);
+            return true;
         } catch (ResponseStatusException revoked) {
-            int status = revoked.getStatusCode().value();
-            if (status != 401 && status != 403 && status != 404) throw revoked;
-            call.end("CLOSED", now); return;
+            requireAuthFailure(revoked); return false;
         }
-        if (!call.expiresAt().isAfter(now)) call.end("EXPIRED", call.expiresAt());
+    }
+    private AppSessionService.SessionIdentity validatedCreator(Call call) {
+        try { return appSessions.requireSessionHash(call.creatorHash, call.owner); }
+        catch (ResponseStatusException revoked) { requireAuthFailure(revoked); return null; }
+    }
+    private static void requireAuthFailure(ResponseStatusException failure) {
+        int status = failure.getStatusCode().value();
+        if (status != 401 && status != 403 && status != 404) throw failure;
+    }
+    /** Called under the lock after DB reads, using current time and current mutable state. */
+    private void resume(Call snapshot, Instant now) {
+        cleanup(now);
+        if (calls.get(snapshot.id) != snapshot) throw missing();
+    }
+    private void applyValidation(Call call, boolean valid, Instant now) {
+        if (call.active() && !valid) call.end("CLOSED", now);
     }
     private void cleanup(Instant now) {
         for (Call call : calls.values()) {
@@ -175,6 +231,7 @@ public class RtcSignalingService {
     }
     private static ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "영상 연결을 찾을 수 없습니다."); }
     private static ResponseStatusException limited() { return new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "잠시 후 영상 연결을 다시 시도해 주세요."); }
+    private static ResponseStatusException conflict() { return new ResponseStatusException(HttpStatus.CONFLICT, "영상 연결 상태가 변경되었습니다."); }
 
     private static final class RateWindow {
         final Instant until; int used;

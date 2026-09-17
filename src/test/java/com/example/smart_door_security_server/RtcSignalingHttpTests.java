@@ -28,11 +28,47 @@ class RtcSignalingHttpTests {
     @Autowired AppSessionRepository sessionRows;
     @Autowired PairedDeviceRepository devices;
     @Autowired DeviceRegistrationService registry;
+    @Autowired jakarta.persistence.EntityManagerFactory entityManagerFactory;
     final JsonMapper json = JsonMapper.builder().build();
     HttpClient client;
     record Identity(User user, String app, String camera, String deviceId) { }
     @BeforeEach void open() { client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build(); }
     @AfterEach void close() { client.close(); }
+
+    @Test void signalingRequestsHaveBoundedDatabaseQueryCounts() throws Exception {
+        var owner = identity(DeviceRole.CAMERA);
+        var idle = identity(DeviceRole.CAMERA);
+        var statistics = entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        try {
+            statistics.clear();
+            String id = create(owner);
+            assertQueries(statistics, "create", 3);
+            assertThat(send("GET", "/api/rtc/camera/next", owner.camera(), null).statusCode()).isEqualTo(200);
+            assertQueries(statistics, "next-pending", 4);
+            assertThat(send("GET", appPath(id), owner.app(), null).statusCode()).isEqualTo(200);
+            assertQueries(statistics, "viewer-pending", 4);
+            assertThat(send("POST", cameraPath(id) + "/answer", owner.camera(), sdp("answer", "v=0\r\no=query-test")).statusCode()).isEqualTo(204);
+            assertQueries(statistics, "answer", 4);
+            assertThat(send("GET", cameraPath(id), owner.camera(), null).statusCode()).isEqualTo(200);
+            assertQueries(statistics, "camera-ready", 4);
+            assertThat(send("GET", appPath(id), owner.app(), null).statusCode()).isEqualTo(200);
+            assertQueries(statistics, "viewer-ready", 4);
+            assertThat(send("GET", "/api/rtc/camera/next", owner.camera(), null).statusCode()).isEqualTo(204);
+            assertQueries(statistics, "next-ready", 2);
+            assertThat(send("GET", "/api/rtc/camera/next", idle.camera(), null).statusCode()).isEqualTo(204);
+            assertQueries(statistics, "next-idle", 2);
+            assertThat(send("POST", appPath(id) + "/close", owner.app(), null).statusCode()).isEqualTo(204);
+            assertQueries(statistics, "close", 2);
+        } finally { statistics.setStatisticsEnabled(false); }
+    }
+
+    private void assertQueries(org.hibernate.stat.Statistics statistics, String operation, long expected) {
+        long statements = statistics.getPrepareStatementCount();
+        System.out.println("RTC SQL count " + operation + "=" + statements);
+        assertThat(statements).as(operation + " SQL statements").isEqualTo(expected);
+        statistics.clear();
+    }
 
     @Test void completeHttpExchangeIsPrivateIdempotentAndDoesNotUseVideoRelay() throws Exception {
         var owner = identity(DeviceRole.CAMERA);

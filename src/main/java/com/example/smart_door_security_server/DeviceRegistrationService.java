@@ -30,6 +30,7 @@ public class DeviceRegistrationService {
             String pairingCode, Instant expiresAt) { }
     public record Preview(DeviceRole role, String name, Instant expiresAt) { }
     public record DeviceIdentity(String deviceId, DeviceRole role, Integer userNo) { }
+    public record CameraCredential(String deviceId, Integer userNo, String tokenHash) { }
 
     public synchronized DeviceView enroll(String authorization, EnrollRequest request, String address) {
         String hash = TokenSecrets.hash(TokenSecrets.bearer(authorization));
@@ -128,6 +129,14 @@ public class DeviceRegistrationService {
     public DeviceIdentity require(String authorization, DeviceRole role, Integer requestedOwner) {
         PairedDevice device = findKnown(authorization).orElseThrow(TokenSecrets::unauthorized);
         return identity(device, role, requestedOwner);
+    }
+
+    @Transactional(readOnly = true)
+    public CameraCredential requireCameraCredential(String authorization) {
+        PairedDevice device = findKnown(authorization).orElseThrow(TokenSecrets::unauthorized);
+        var camera = identity(device, DeviceRole.CAMERA, null);
+        // Reuse this request's checked identity, including the original credential binding.
+        return new CameraCredential(camera.deviceId(), camera.userNo(), device.getTokenHash());
     }
 
     @Transactional(readOnly = true)
