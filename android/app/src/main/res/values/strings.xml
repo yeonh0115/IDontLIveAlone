@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">na_honja_ansanda</string>
+    <string name="camera_live_description">실시간 카메라 영상</string>
+    <string name="camera_waiting">카메라 연결을 기다리고 있습니다.</string>
+    <string name="camera_login_required">영상을 보려면 다시 로그인해주세요.</string>
     <!-- TODO: Remove or change this placeholder text -->
     <string name="hello_blank_fragment">Hello blank fragment</string>
 </resources>

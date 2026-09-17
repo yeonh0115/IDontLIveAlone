@@ -23,6 +23,8 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
     private final AudioStreamHandler audioStreamHandler;
     private final CameraWebSocketHandler cameraWebSocketHandler;
     private final CameraHandshakeInterceptor cameraHandshakeInterceptor;
+    private final ViewerWebSocketHandler viewerWebSocketHandler;
+    private final ViewerHandshakeInterceptor viewerHandshakeInterceptor;
 
     @Value("${app.storage-dir:./data}")
     private String storageDir;
@@ -73,6 +75,9 @@ public class WebConfig implements WebMvcConfigurer, WebSocketConfigurer {
         // 카메라 웹소켓
         registry.addHandler(cameraWebSocketHandler, "/ws/camera")
                 .addInterceptors(cameraHandshakeInterceptor)
+                .setAllowedOrigins("*");
+        registry.addHandler(viewerWebSocketHandler, "/ws/viewer")
+                .addInterceptors(viewerHandshakeInterceptor)
                 .setAllowedOrigins("*");
     }
 

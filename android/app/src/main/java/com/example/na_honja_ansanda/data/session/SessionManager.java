@@ -11,6 +11,7 @@ public class SessionManager {
 
     private final SharedPreferences prefs;
     private final SecureSessionStore secureStore;
+    private final java.util.concurrent.atomic.AtomicLong sessionRevision = new java.util.concurrent.atomic.AtomicLong();
     private User loginUser;
 
     private SessionManager(Context context) {
@@ -41,6 +42,7 @@ public class SessionManager {
         }
         user.setSessionToken(null);
         this.loginUser = user;
+        sessionRevision.incrementAndGet();
         return true;
     }
 
@@ -66,6 +68,7 @@ public class SessionManager {
     }
 
     public void clearSession() {
+        sessionRevision.incrementAndGet();
         this.loginUser = null;
         secureStore.clear();
         prefs.edit().clear().apply();
@@ -74,4 +77,7 @@ public class SessionManager {
     public boolean isLoggedIn() {
         return getUserNo() != -1;
     }
+
+    /** Invalidates in-flight private media when the account or token changes. */
+    public long getSessionRevision() { return sessionRevision.get(); }
 }

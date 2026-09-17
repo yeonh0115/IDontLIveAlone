@@ -1,6 +1,7 @@
 """Camera capture, local MJPEG and Render transport for the door Raspberry Pi."""
 import datetime
 import os
+import socket
 import ssl
 import subprocess
 import threading
@@ -10,7 +11,7 @@ import requests
 import websocket
 from flask import Flask, Response, jsonify, request
 
-from pi_runtime import CaptureQueue, LatestFrame, Settings, event_log_id, upload_fields
+from pi_runtime import AckVideoSender, CaptureQueue, LatestFrame, Settings, event_log_id, require_camera_ack, upload_fields
 
 app = Flask(__name__)
 settings = Settings()
@@ -20,8 +21,8 @@ RENDER_UPLOAD_URL = settings.api_url("/api/upload")
 
 def capture_camera():
     command = [
-        "rpicam-vid", "-t", "0", "--width", "320", "--height", "240",
-        "--framerate", "15", "--codec", "mjpeg", "--quality", "40",
+        "rpicam-vid", "-t", "0", "--width", str(settings.camera_width), "--height", str(settings.camera_height),
+        "--framerate", str(settings.camera_capture_fps), "--codec", "mjpeg", "--quality", str(settings.camera_jpeg_quality),
         "--nopreview", "--flush", "-o", "-",
     ]
     while True:
@@ -67,21 +68,24 @@ def upload_to_cloud_websocket():
             ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
             if ca_bundle:
                 ssl_options["ca_certs"] = ca_bundle
-            connection = websocket.create_connection(RENDER_WS_URL, timeout=5, sslopt=ssl_options, header=settings.auth_headers())
-            last_sequence = -1
-            print("[camera] Render WebSocket connected", flush=True)
+            headers = dict(settings.auth_headers())
+            headers["X-Camera-Ack"] = "1"
+            socket_options = [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)] if hasattr(socket, "TCP_NODELAY") else []
+            connection = websocket.create_connection(
+                RENDER_WS_URL, timeout=5, sslopt=ssl_options, header=headers, sockopt=socket_options,
+            )
+            require_camera_ack(connection)
+            sender = AckVideoSender(frames, settings, logger=lambda message: print(message, flush=True))
+            print("[camera] Render WebSocket connected (ACK v1)", flush=True)
             while True:
-                frame, sequence = frames.get()
-                if frame is not None and sequence != last_sequence:
-                    connection.send_binary(frame)
-                    last_sequence = sequence
-                time.sleep(0.06)
+                sender.step(connection)
+                time.sleep(0.005)
         except Exception as error:
-            print(f"[camera] WebSocket disconnected: {error}; retrying in 3 seconds", flush=True)
+            print(f"[camera] WebSocket disconnected: {type(error).__name__}; retrying in 3 seconds", flush=True)
         finally:
             if connection is not None:
                 try:
-                    connection.close()
+                    connection.shutdown()  # Discard queued bytes; do not wait for a close handshake.
                 except Exception:
                     pass
         time.sleep(3)

@@ -13,7 +13,7 @@ import requests
 
 from pi_runtime import (
     LatestFrame, Settings, TaskState, commit_model_and_samples, prepare_model_baseline,
-    recover_model_transaction, sync_directory, task_sample_directory, training_image_paths,
+    face_detection_size, recover_model_transaction, sync_directory, task_sample_directory, training_image_paths,
 )
 
 settings = Settings()
@@ -145,7 +145,10 @@ def normalize_face(gray, face):
 
 def predict_frame(frame, reduce_size=False):
     if reduce_size:
-        frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
+        height, width = frame.shape[:2]
+        size = face_detection_size(width, height)
+        if size != (width, height):
+            frame = cv2.resize(frame, size)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = detect_faces(gray)
     if len(faces) == 0:

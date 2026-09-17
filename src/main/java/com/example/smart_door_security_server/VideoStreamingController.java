@@ -15,7 +15,7 @@ import java.io.OutputStream;
 public class VideoStreamingController {
 
     // 💡 라즈베리파이(로컬)가 보낸 최신 JPEG 이미지를 임시 보관할 바이트 배열
-    private record Frame(byte[] jpeg, long updatedAt) {}
+    static record Frame(byte[] jpeg, long updatedAt) {}
     private static volatile Frame currentFrame;
     private static final java.util.concurrent.ConcurrentMap<Integer, Frame> ownerFrames = new java.util.concurrent.ConcurrentHashMap<>();
     private AppSessionService sessions;
@@ -40,6 +40,7 @@ public class VideoStreamingController {
         else ownerFrames.put(owner, new Frame(imageBytes.clone(), System.currentTimeMillis()));
     }
     public static void clearOwnerFrame(Integer owner) { ownerFrames.remove(owner); }
+    static Frame latestOwnerFrame(Integer owner) { return owner == null ? null : ownerFrames.get(owner); }
 
     /**
      * 1. 로컬 라즈베리파이(fin_camera.py)가 비디오 프레임을 업로드하는 API

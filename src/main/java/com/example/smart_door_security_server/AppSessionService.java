@@ -11,6 +11,7 @@ public class AppSessionService {
     private final AppSessionRepository sessions;
     private final UserRepository users;
     public record IssuedSession(String sessionToken, Instant sessionExpiresAt) { }
+    public record SessionIdentity(Integer userNo, String tokenHash, Instant expiresAt) { }
 
     @Transactional
     public IssuedSession issue(Integer userNo) {
@@ -25,12 +26,24 @@ public class AppSessionService {
 
     @Transactional(readOnly = true)
     public Integer requireUser(String authorization) {
-        AppSession session = sessions.findById(TokenSecrets.hash(TokenSecrets.bearer(authorization)))
+        return requireSession(authorization).userNo();
+    }
+
+    @Transactional(readOnly = true)
+    public SessionIdentity requireSession(String authorization) {
+        return requireSessionHash(TokenSecrets.hash(TokenSecrets.bearer(authorization)), null);
+    }
+
+    @Transactional(readOnly = true)
+    public SessionIdentity requireSessionHash(String tokenHash, Integer expectedOwner) {
+        if (tokenHash == null) throw TokenSecrets.unauthorized();
+        AppSession session = sessions.findById(tokenHash)
                 .orElseThrow(TokenSecrets::unauthorized);
-        if (!session.getExpiresAt().isAfter(Instant.now()) || !users.existsById(session.getUserNo())) {
+        if (!session.getExpiresAt().isAfter(Instant.now()) || !users.existsById(session.getUserNo())
+                || (expectedOwner != null && !expectedOwner.equals(session.getUserNo()))) {
             throw TokenSecrets.unauthorized();
         }
-        return session.getUserNo();
+        return new SessionIdentity(session.getUserNo(), session.getTokenHash(), session.getExpiresAt());
     }
 
     @Transactional

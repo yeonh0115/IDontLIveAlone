@@ -14,10 +14,8 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -35,6 +33,7 @@ import com.example.na_honja_ansanda.data.model.IntegratedLog;
 import com.example.na_honja_ansanda.data.model.LoadState;
 import com.example.na_honja_ansanda.data.remote.ApiClient;
 import com.example.na_honja_ansanda.data.session.SessionManager;
+import com.example.na_honja_ansanda.data.video.LatestFrameViewer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -57,7 +56,9 @@ public class HomeFragment extends Fragment {
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
 
     private ProgressBar audioProgressBar;
-    private WebView webView;
+    private ImageView cameraView;
+    private TextView cameraStatus;
+    private LatestFrameViewer cameraViewer;
     private WebSocket webSocket;
     private AudioRecord audioRecord;
 
@@ -89,13 +90,14 @@ public class HomeFragment extends Fragment {
         sessionManager = SessionManager.getInstance(getContext());
 
         initViews(view);
-        setupWebView();
+        setupCameraViewer();
         fetchSensorLogs();
     }
 
     private void initViews(View view) {
         audioProgressBar = view.findViewById(R.id.audio_progress);
-        webView = view.findViewById(R.id.cctv_view);
+        cameraView = view.findViewById(R.id.cctv_view);
+        cameraStatus = view.findViewById(R.id.cctv_status);
         sensorContainer = view.findViewById(R.id.sensor_container);
 
         tvDangerCount = view.findViewById(R.id.tv_danger_count);
@@ -129,49 +131,34 @@ public class HomeFragment extends Fragment {
         }
     }
 
-    private void setupWebView() {
-        if (webView == null) return;
-        WebSettings settings = webView.getSettings();
-
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
-
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                super.onPageStarted(view, url, favicon);
-                Log.d("WEBVIEW_DEBUG", "CCTV 스트리밍 주소 로딩 시작: " + url);
+    private void setupCameraViewer() {
+        cameraViewer = new LatestFrameViewer(new LatestFrameViewer.Credentials() {
+            @Override public String authorization() { return sessionManager.getAuthorizationHeader(); }
+            @Override public long revision() { return sessionManager.getSessionRevision(); }
+        }, new LatestFrameViewer.Listener() {
+            @Override public void onFrame(android.graphics.Bitmap bitmap) {
+                if (cameraView == null) return;
+                cameraView.setImageBitmap(bitmap);
+                cameraStatus.setVisibility(View.GONE);
             }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                Log.d("WEBVIEW_DEBUG", "CCTV 스트리밍 주소 로딩 완료!");
-            }
-
-            @Override
-            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                super.onReceivedError(view, errorCode, description, failingUrl);
-                Log.e("WEBVIEW_DEBUG", "WebView 로드 에러: " + description + " (코드: " + errorCode + ")");
+            @Override public void onStatus(LatestFrameViewer.Status status) {
+                if (cameraView == null) return;
+                cameraView.setImageDrawable(null);
+                cameraStatus.setText(status == LatestFrameViewer.Status.LOGIN_REQUIRED
+                        ? R.string.camera_login_required : R.string.camera_waiting);
+                cameraStatus.setVisibility(View.VISIBLE);
             }
         });
+    }
 
-        String authorization = sessionManager == null ? null : sessionManager.getAuthorizationHeader();
-        if (authorization == null) {
-            webView.loadData("<html><body style='color:white;background:#182132'>카메라 영상을 보려면 다시 로그인하고 기기를 연결해주세요.</body></html>",
-                    "text/html; charset=utf-8", "UTF-8");
-            return;
-        }
-        webView.loadUrl("https://idontlivealone.onrender.com/video_feed",
-                java.util.Collections.singletonMap("Authorization", authorization));
+    @Override public void onStart() {
+        super.onStart();
+        if (cameraViewer != null) cameraViewer.start();
+    }
+
+    @Override public void onStop() {
+        if (cameraViewer != null) cameraViewer.stop();
+        super.onStop();
     }
 
     private void fetchSensorLogs() {
@@ -609,6 +596,9 @@ public class HomeFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        if (cameraViewer != null) { cameraViewer.close(); cameraViewer = null; }
+        cameraView = null;
+        cameraStatus = null;
         if (logsCall != null) logsCall.cancel();
         isRecording = false;
         stopAudioRecord();

@@ -13,6 +13,16 @@ from urllib.parse import urljoin, urlparse
 import uuid
 
 DEFAULT_SERVER = "https://idontlivealone.onrender.com"
+MAX_STREAM_JPEG_BYTES = 512 * 1024
+
+def bounded_setting(env, name, default, minimum, maximum, integer=False):
+    try:
+        value = int(env.get(name, str(default))) if integer else float(env.get(name, str(default)))
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid {name}") from None
+    if not math.isfinite(value) or not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
 
 class Settings:
     def __init__(self, environ=None, source_dir=None):
@@ -32,6 +42,15 @@ class Settings:
         self.device = None
         self.source_dir = source
         self.event_photos_enabled = env.get("EVENT_PHOTOS_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+        self.camera_width = bounded_setting(env, "CAMERA_WIDTH", 640, 160, 1280, True)
+        self.camera_height = bounded_setting(env, "CAMERA_HEIGHT", 480, 120, 720, True)
+        if self.camera_width % 2 or self.camera_height % 2:
+            raise ValueError("Camera width and height must be even")
+        self.camera_jpeg_quality = bounded_setting(env, "CAMERA_JPEG_QUALITY", 70, 1, 100, True)
+        self.camera_capture_fps = bounded_setting(env, "CAMERA_CAPTURE_FPS", 15, 1, 30)
+        self.camera_cloud_fps = bounded_setting(env, "CAMERA_CLOUD_FPS", 10, 1, self.camera_capture_fps)
+        self.camera_ack_timeout = bounded_setting(env, "CAMERA_ACK_TIMEOUT", 2, 0.25, 10)
+        self.camera_max_frame_age = bounded_setting(env, "CAMERA_MAX_FRAME_AGE", 0.5, 0.05, 2)
         self.face_threshold = float(env.get("FACE_THRESHOLD", "85"))
         self.face_required_successes = int(env.get("FACE_REQUIRED_SUCCESSES", "4"))
         self.solenoid_pin = int(env.get("SOLENOID_PIN", "23"))
@@ -102,15 +121,120 @@ class LatestFrame:
             self.sequence += 1
             self.updated_at = self.clock()
 
-    def get(self):
+    def get(self, max_age=None):
         with self.lock:
-            if self.frame is None or self.clock() - self.updated_at > self.max_age:
+            age_limit = self.max_age if max_age is None else min(self.max_age, max_age)
+            if self.frame is None or self.clock() - self.updated_at > age_limit:
                 return None, self.sequence
             return self.frame, self.sequence
 
     def clear(self):
         with self.lock:
             self.frame = None
+
+def face_detection_size(width, height):
+    """Keep the original 320x240 -> 160x120 workload as stream quality grows."""
+    if width <= 0 or height <= 0:
+        raise ValueError("Invalid face frame dimensions")
+    scale = min(1.0, 160 / width, 120 / height)
+    return max(1, int(width * scale)), max(1, int(height * scale))
+
+class CameraAckUnsupported(RuntimeError):
+    pass
+
+class CameraAckInvalid(RuntimeError):
+    pass
+
+def require_camera_ack(connection):
+    headers = connection.getheaders() or {}
+    supported = next((value for key, value in headers.items() if key.lower() == "x-camera-ack"), None)
+    if supported != "1":
+        raise CameraAckUnsupported("Server does not support camera ACK")
+
+def send_frame_with_ack(connection, frame, timeout, clock=time.monotonic, timer_factory=threading.Timer):
+    """One deadline includes all partial socket writes, reads and control frames."""
+    if not frame or len(frame) > MAX_STREAM_JPEG_BYTES:
+        raise ValueError("Invalid stream JPEG size")
+    started = clock()
+    deadline = started + timeout
+    expired = threading.Event()
+
+    def abort():
+        expired.set()
+        try:
+            connection.abort()  # shutdown(SHUT_RDWR), without a close-handshake wait
+        except Exception:
+            pass
+
+    def remaining():
+        value = deadline - clock()
+        if expired.is_set() or value <= 0:
+            raise TimeoutError("Camera ACK deadline exceeded")
+        return value
+
+    # Socket timeouts alone restart for each partial write/read inside websocket-client.
+    watchdog = timer_factory(timeout, abort)
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        connection.settimeout(remaining())
+        connection.send_binary(frame)
+        connection.settimeout(remaining())
+        acknowledged = connection.recv()
+        remaining()
+        if acknowledged != "ack":
+            raise CameraAckInvalid("Unexpected camera ACK")
+        return clock() - started
+    except Exception:
+        abort()
+        raise
+    finally:
+        watchdog.cancel()
+        # Join the single watchdog before reusing/closing this connection. No orphan timers.
+        watchdog.join()
+
+class AckVideoSender:
+    """Keep only the newest frame while the one outstanding frame awaits its ACK."""
+    def __init__(self, frames, settings, clock=time.monotonic, logger=print, send=send_frame_with_ack):
+        self.frames, self.settings, self.clock, self.logger, self.send = frames, settings, clock, logger, send
+        self.last_sequence = -1
+        self.next_send_at = 0.0
+        self.report_started = clock()
+        self.count = self.bytes = self.oversized = 0
+        self.ack_total = self.ack_max = 0.0
+
+    def report_if_due(self):
+        now = self.clock()
+        elapsed = now - self.report_started
+        if elapsed < 30:
+            return
+        average = self.ack_total / self.count if self.count else 0.0
+        self.logger(f"[camera] Stream 30s: fps={self.count / elapsed:.2f}, bytes={self.bytes}, "
+                    f"ack_mean_ms={average * 1000:.0f}, ack_max_ms={self.ack_max * 1000:.0f}, oversized={self.oversized}")
+        self.report_started = now
+        self.count = self.bytes = self.oversized = 0
+        self.ack_total = self.ack_max = 0.0
+
+    def step(self, connection):
+        self.report_if_due()
+        now = self.clock()
+        if now < self.next_send_at:
+            return False
+        frame, sequence = self.frames.get(max_age=self.settings.camera_max_frame_age)
+        if frame is None or sequence == self.last_sequence:
+            return False
+        if len(frame) > MAX_STREAM_JPEG_BYTES:
+            self.last_sequence = sequence
+            self.oversized += 1
+            return False
+        elapsed = self.send(connection, frame, self.settings.camera_ack_timeout)
+        self.last_sequence = sequence
+        self.next_send_at = now + 1 / self.settings.camera_cloud_fps
+        self.count += 1
+        self.bytes += len(frame)
+        self.ack_total += elapsed
+        self.ack_max = max(self.ack_max, elapsed)
+        return True
 
 def sync_directory(path):
     # POSIX directory fsync preserves rename/unlink metadata across power loss.

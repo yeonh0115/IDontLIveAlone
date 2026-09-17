@@ -2,6 +2,7 @@ package com.example.smart_door_security_server;
 
 import org.springframework.stereotype.Component; // 👈 추가
 import org.springframework.web.socket.BinaryMessage;
+import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
@@ -37,6 +38,10 @@ public class CameraWebSocketHandler extends BinaryWebSocketHandler {
             byte[] imageBytes = new byte[payload.remaining()];
             payload.get(imageBytes);
             VideoStreamingController.updateOwnerFrame(owner, imageBytes);
+            if (session != null && Boolean.TRUE.equals(session.getAttributes().get("cameraAck"))) {
+                // Only negotiated senders receive ACKs; older clients never read server messages.
+                session.sendMessage(new TextMessage("ack"));
+            }
         } catch (org.springframework.web.server.ResponseStatusException revoked) {
             session.close(CloseStatus.POLICY_VIOLATION);
         } catch (Exception e) {

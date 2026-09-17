@@ -27,11 +27,26 @@
             app:cardElevation="0dp"
             app:cardMaxElevation="0dp">
 
-            <WebView
-                android:id="@+id/cctv_view"
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#000000" />
+                android:background="#000000">
+                <ImageView
+                    android:id="@+id/cctv_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/camera_live_description"
+                    android:scaleType="fitCenter" />
+                <TextView
+                    android:id="@+id/cctv_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:padding="20dp"
+                    android:text="@string/camera_waiting"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+            </FrameLayout>
         </androidx.cardview.widget.CardView>
 
         <!-- 2. 음성변조 -->
