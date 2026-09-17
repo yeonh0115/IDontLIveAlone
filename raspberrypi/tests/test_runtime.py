@@ -1,5 +1,4 @@
 import importlib.util
-import io
 import json
 import os
 from pathlib import Path
@@ -280,16 +279,20 @@ class CameraTests(unittest.TestCase):
         self.camera = load_program("fin_camera.py", self.stubs)
 
     def test_camera_eof_clears_frame_and_restarts_process(self):
-        processes = [SimpleNamespace(stdout=io.BytesIO(b"\xff\xd8image\xff\xd9"), poll=Mock(return_value=0), wait=Mock()) for _ in range(2)]
+        processes = [SimpleNamespace(stdout=Mock(), poll=Mock(return_value=0), wait=Mock()) for _ in range(2)]
         popen = Mock(side_effect=processes)
-        with patch.object(self.camera, "subprocess", SimpleNamespace(Popen=popen, PIPE=-1)), patch.object(self.camera, "time", SimpleNamespace(sleep=Mock(side_effect=[None, StopLoop()]))):
+        stopped = SimpleNamespace(is_set=lambda: False, wait=Mock(side_effect=[None, StopLoop()]))
+        def eof(*_):
+            self.camera.frames.put(b"\xff\xd8image\xff\xd9")
+            raise RuntimeError("rpicam-vid ended its output stream")
+        with patch.object(self.camera.subprocess, "Popen", popen), patch.object(self.camera, "read_camera_frames", side_effect=eof):
             with self.assertRaises(StopLoop):
-                self.camera.capture_camera()
+                self.camera.capture_camera(stopped)
         self.assertEqual(popen.call_count, 2)
         self.assertIsNone(self.camera.frames.get()[0])
         for process in processes:
-            self.assertTrue(process.stdout.closed)
-            process.wait.assert_called_once()
+            process.stdout.close.assert_called_once()
+            process.wait.assert_called_once_with(timeout=self.camera.CAPTURE_STOP_TIMEOUT)
 
     def test_trigger_keeps_log_id_and_uses_configured_account_only(self):
         self.camera.settings = Settings({"USER_NO": "42", "EVENT_PHOTOS_ENABLED": "true"}, ROOT)

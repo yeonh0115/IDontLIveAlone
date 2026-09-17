@@ -1,5 +1,7 @@
 """Shared local capture and direct WebRTC video for the door Raspberry Pi."""
 import datetime
+import os
+import select
 import subprocess
 import threading
 import time
@@ -16,46 +18,105 @@ frames = LatestFrame()
 RENDER_UPLOAD_URL = settings.api_url("/api/upload")
 video_transport = WebRtcWorker(settings, frames, logger=lambda message: print(message, flush=True))
 
-def capture_camera():
+CAPTURE_FRAME_TIMEOUT = 10.0
+CAPTURE_POLL_INTERVAL = 0.5
+CAPTURE_STOP_TIMEOUT = 2.0
+MAX_CAPTURE_JPEG_BYTES = 1_000_000
+
+
+def read_camera_frames(process, stopped, clock=time.monotonic):
+    """Read the Linux pipe without waiting forever for a live but stalled child."""
+    descriptor = process.stdout.fileno()
+    os.set_blocking(descriptor, False)
+    buffer = bytearray()
+    last_frame_at = clock()
+    while not stopped.is_set():
+        remaining = CAPTURE_FRAME_TIMEOUT - (clock() - last_frame_at)
+        if remaining <= 0:
+            raise TimeoutError("rpicam-vid produced no complete JPEG for 10 seconds")
+        try:
+            readable, _, _ = select.select([descriptor], [], [], min(CAPTURE_POLL_INTERVAL, remaining))
+            if not readable:
+                if process.poll() is not None:
+                    raise RuntimeError("rpicam-vid stopped")
+                continue
+            chunk = os.read(descriptor, 64 * 1024)
+        except (BlockingIOError, InterruptedError):
+            continue
+        if not chunk:
+            raise RuntimeError("rpicam-vid ended its output stream")
+        buffer.extend(chunk)
+        while buffer:
+            start = buffer.find(b"\xff\xd8")
+            if start < 0:
+                # Keep a split SOI marker, without accumulating unrelated output.
+                buffer[:] = b"\xff" if buffer[-1] == 0xff else b""
+                break
+            if start:
+                del buffer[:start]
+            end = buffer.find(b"\xff\xd9", 2)
+            next_start = buffer.find(b"\xff\xd8", 2)
+            if next_start >= 0 and (end < 0 or next_start < end):
+                # Recover from an incomplete image followed by a new JPEG.
+                del buffer[:next_start]
+                continue
+            if end < 0:
+                if len(buffer) > MAX_CAPTURE_JPEG_BYTES:
+                    buffer[:] = b"\xff" if buffer[-1] == 0xff else b""
+                break
+            size = end + 2
+            if 4 < size <= MAX_CAPTURE_JPEG_BYTES:
+                frames.put(bytes(memoryview(buffer)[:size]))
+                last_frame_at = clock()
+            del buffer[:size]
+
+
+def reap_camera(process):
+    """Release the camera before a replacement process is allowed to start."""
+    try:
+        if process.poll() is None:
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+        try:
+            process.wait(timeout=CAPTURE_STOP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=CAPTURE_STOP_TIMEOUT)
+    finally:
+        if process.stdout:
+            process.stdout.close()
+
+
+def capture_camera(stopped=None):
+    stopped = stopped if stopped is not None else threading.Event()
     command = [
         "rpicam-vid", "-t", "0", "--width", str(settings.camera_width), "--height", str(settings.camera_height),
         "--framerate", str(settings.camera_capture_fps), "--codec", "mjpeg", "--quality", str(settings.camera_jpeg_quality),
         "--nopreview", "--flush", "-o", "-",
     ]
-    while True:
+    while not stopped.is_set():
         process = None
         frames.clear()
         try:
             process = subprocess.Popen(command, stdout=subprocess.PIPE, bufsize=0)
-            buffer = b""
-            while True:
-                chunk = process.stdout.read(4096)
-                if not chunk:
-                    raise RuntimeError("rpicam-vid ended its output stream")
-                buffer += chunk
-                while True:
-                    start = buffer.find(b"\xff\xd8")
-                    if start < 0:
-                        break
-                    end = buffer.find(b"\xff\xd9", start + 2)
-                    if end < 0:
-                        buffer = buffer[start:]
-                        break
-                    frames.put(buffer[start:end + 2])
-                    buffer = buffer[end + 2:]
-                if len(buffer) > 1_000_000:
-                    buffer = b""
+            read_camera_frames(process, stopped)
         except Exception as error:
             print(f"[camera] Capture stopped: {error}; restarting in 2 seconds", flush=True)
         finally:
             frames.clear()
             if process is not None:
-                if process.poll() is None:
-                    process.kill()
-                process.wait()
-                if process.stdout:
-                    process.stdout.close()
-        time.sleep(2)
+                try:
+                    reap_camera(process)
+                except Exception as error:
+                    # Never start another camera owner when the old child cannot be reaped.
+                    print(f"[camera] Child cleanup failed ({type(error).__name__}); capture stopped", flush=True)
+                    return
+        stopped.wait(2)
 
 def upload_event_image(log_id=None):
     if not settings.event_photos_enabled:

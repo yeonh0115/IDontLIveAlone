@@ -23,7 +23,7 @@ function fixture(options = {}) {
     async setRemoteDescription(value) { if (options.remoteError) throw new Error(options.remoteError); this.remoteDescription = value; }
     addEventListener(name, callback) { this.events.set(name, callback); }
     removeEventListener(name) { this.events.delete(name); }
-    async getStats() { return options.stats || new Map(); }
+    async getStats() { return options.getStats ? options.getStats() : options.stats || new Map(); }
     close() { this.closed = true; this.connectionState = 'closed'; }
   }
   const context = vm.createContext({
@@ -42,7 +42,7 @@ function fixture(options = {}) {
   });
   vm.runInContext(script, context);
   return {
-    calls, video, get peer() { return peer; }, api: context.window.DirectCamera,
+    calls, video, get peer() { return peer; }, get timerCount() { return timers.size; }, api: context.window.DirectCamera,
     async timer(delay, elapsed = delay) {
       time += elapsed;
       const match = [...timers].find(([, timer]) => timer.delay === delay);
@@ -165,4 +165,74 @@ test('gathering diagnostics emit counts without candidate addresses or SDP', asy
   await f.api.start();
   assert.deepEqual(f.calls.iceCounts, [[true, 1, 1, 0]]);
   assert.equal(JSON.stringify(f.calls.iceCounts).includes('private'), false);
+});
+
+test('growing received bytes cannot hide a decoder frozen for ten seconds', async () => {
+  const report = stats('srflx');
+  const inbound = report.get('inbound');
+  const f = fixture({stats: report}); await f.api.start();
+  f.peer.connectionState = 'connected'; f.video.onplaying();
+  await f.timer(5000);
+  inbound.bytesReceived += 100000; await f.timer(5000);
+  assert.deepEqual(f.calls.states, ['playing']);
+  inbound.bytesReceived += 100000; await f.timer(5000);
+  assert.deepEqual(f.calls.states, ['playing', 'failed']);
+  assert.ok(f.calls.diagnostics.includes('stalled'));
+  assert.equal(f.peer.closed, true);
+  assert.equal(f.video.srcObject, null);
+  assert.equal(f.timerCount, 0);
+  await f.api.start();
+  assert.equal(f.calls.offers.length, 1, 'recovery remains a native manual retry');
+});
+
+test('healthy twelve-fps decoded frames keep the viewer active', async () => {
+  const report = stats('srflx');
+  const inbound = report.get('inbound');
+  const f = fixture({stats: report}); await f.api.start();
+  f.peer.connectionState = 'connected'; f.video.onplaying();
+  for (let i = 0; i < 12; i++) {
+    inbound.bytesReceived += 100000; inbound.framesDecoded += 60;
+    await f.timer(5000);
+  }
+  assert.deepEqual(f.calls.states, ['playing']);
+  assert.equal(f.calls.diagnostics.includes('stalled'), false);
+  assert.equal(f.peer.closed, undefined);
+});
+
+test('no received bytes or decoded frames still terminates the stalled stream', async () => {
+  const f = fixture({stats: stats('srflx')}); await f.api.start();
+  f.peer.connectionState = 'connected';
+  await f.timer(5000); await f.timer(5000); await f.timer(5000);
+  assert.deepEqual(f.calls.states, ['failed']);
+  assert.ok(f.calls.diagnostics.includes('stalled'));
+  assert.equal(f.peer.closed, true);
+});
+
+test('a long signaling wait does not consume the connected decode grace period', async () => {
+  const report = stats('srflx');
+  report.get('inbound').bytesReceived = 0; report.get('inbound').framesDecoded = 0;
+  const f = fixture({stats: report}); await f.api.start();
+  await f.timer(5000, 180000);
+  f.peer.connectionState = 'connected';
+  await f.timer(5000);
+  assert.deepEqual(f.calls.states, []);
+  report.get('inbound').framesDecoded = 1;
+  await f.timer(5000);
+  assert.deepEqual(f.calls.states, []);
+  assert.equal(f.calls.diagnostics.includes('stalled'), false);
+});
+
+test('shutdown cancels decode monitoring and ignores a late stats result', async () => {
+  let resolveStats;
+  const f = fixture({getStats: () => new Promise(resolve => { resolveStats = resolve; })});
+  await f.api.start(); f.peer.connectionState = 'connected';
+  const pending = f.timer(5000);
+  f.api.close();
+  resolveStats(stats('srflx')); await pending;
+  assert.equal(f.timerCount, 0);
+  assert.equal(f.calls.stats.length, 0);
+  assert.deepEqual(f.calls.states, []);
+  assert.equal(f.peer.closed, true);
+  assert.equal(f.video.paused, true);
+  assert.equal(f.video.srcObject, null);
 });

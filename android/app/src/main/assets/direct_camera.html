@@ -8,7 +8,7 @@
 (() => {
   const video = document.getElementById('video');
   let pc = null, stopped = false, statsTimer = null, disconnectTimer = null;
-  let lastBytes = -1, lastFrames = -1, lastProgress = performance.now();
+  let lastBytes = -1, lastFrames = -1, lastProgress = null, lastDecodeProgress = null;
   const report = state => { if (!stopped) NativeCamera.state(state); };
   const diagnose = stage => { if (!stopped) NativeCamera.diagnostic(stage); };
   const close = () => {
@@ -60,8 +60,18 @@
           NativeCamera.stats(local.candidateType || '', remote.candidateType || '', Math.floor(bytes), Math.floor(frames));
         }
       }
-      if (bytes > lastBytes || frames > lastFrames) { lastProgress = performance.now(); lastBytes = bytes; lastFrames = frames; }
-      else if (peer.connectionState === 'connected' && performance.now() - lastProgress >= 10000) fail('stalled');
+      // Signaling/cold-start time is not a media stall. Start both clocks after connection.
+      if (peer.connectionState !== 'connected') {
+        lastProgress = lastDecodeProgress = null;
+        lastBytes = bytes; lastFrames = frames;
+        return;
+      }
+      const now = performance.now();
+      if (lastProgress === null || bytes > lastBytes || frames > lastFrames) lastProgress = now;
+      // Incoming packets must not hide a decoder that has stopped producing video frames.
+      if (lastDecodeProgress === null || frames > lastFrames) lastDecodeProgress = now;
+      lastBytes = bytes; lastFrames = frames;
+      if (now - lastProgress >= 10000 || now - lastDecodeProgress >= 10000) fail('stalled');
     } catch (_) { diagnose('stats_failed'); }
   }
   async function start() {
