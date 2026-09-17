@@ -20,13 +20,13 @@ from urllib.request import Request, urlopen
 
 
 # Filled from the reviewed, tested source commit before publishing this updater.
-SOURCE_REVISION = "8c4935b40e68dfc958f96f10f761a66debb08a98"
+SOURCE_REVISION = "e3d5f8945e37e2fbab2c81d2ef9064063b11b956"
 SOURCE_HASHES = {
     "pi_runtime.py": "3242b276c9917f74d2fd21cdb7a5c3ca4fedd05226963739e57150f94f5c0932",
     "fin_face.py": "1a495cedd5d1239862aa86d089f2d119420f9bad197c1f537ffd9415a306aaa6",
     "webrtc_transport.py": "6e8ff1a527dce35c3efc65e6e01b06294d1fb75455f7e8697243b43e473069a8",
     "requirements-webrtc.txt": "c562afda3e1c0f2237110321939bd3470c19a0863ba06eecf85fa4abefeb9b8a",
-    "fin_camera.py": "f853e36e7f3911a74f5f53483832fe9e3e675ce4027a68f62581a0b59f3e1023"
+    "fin_camera.py": "0d77c28a124178d1d5b4cd1f9638c77c53d13ef8e37450d28dd5d63c3f4eb52e"
 }
 # Install shared helpers before the camera entry point. A missing aiortc runtime
 # leaves local capture running; code + service changes are not power-loss atomic.

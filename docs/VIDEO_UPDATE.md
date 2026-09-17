@@ -1,4 +1,4 @@
-# 직접 영상 연결 (Android 1.2 / WebRTC)
+# 직접 영상 연결 (Android 1.2.3 / WebRTC)
 
 영상은 **Pi ↔ 휴대폰 WebRTC**로 전송합니다. Render는 로그인·기기 소유권 확인과 짧은 SDP 연결 메시지만 처리합니다. Pi가 Render로 JPEG 영상을 계속 올리는 기능과 새 앱의 Render 영상 중계 호출은 제거했습니다. 서버의 이전 영상 API는 업데이트 순서를 위한 호환용으로 남아 있습니다.
 
@@ -14,6 +14,8 @@ Google STUN을 사용하며 유료 TURN이나 자동 JPEG 중계 전환은 설�
 
 Pi 카메라 서비스가 2초마다 HTTPS로 새 연결 요청을 확인하므로, 정상 가동 중에는 15분 무접속으로 절전되는 조건에 해당하지 않습니다. 별도의10분 keep-alive는 추가하지 않습니다. Pi가 꺼지거나 연결이 끊긴 동안에는 Free 서버가 절전될 수 있으며 다음 접속에서 다시 시작합니다. 실제 Free 기동은 약2분20초였고 앱은 최초 연결을 최대3분 기다리도록 준비했습니다.
 
+1.2.3에서는 카메라 프로세스가 살아 있어도 완성 프레임이 10초 동안 없으면 기존 프로세스를 회수하고 재시작합니다. 정상 촬영에는 추가 지연을 넣지 않습니다. 앱은 수신 바이트와 별도로 디코딩 프레임의 정지를 감지합니다. 기존 인증·네트워크 설정과 영상 해상도·프레임률은 유지합니다.
+
 ## 영상과 기존 기능
 
 - 기본 640×480, 촬영 15fps, WebRTC 최대 12fps입니다. 촬영된 최신 JPEG만 압축 영상으로 변환하며 프레임 대기열을 쌓지 않습니다. 실제 FPS와 지연은 Pi CPU·네트워크의 영향을 받습니다.
@@ -25,11 +27,11 @@ Pi 카메라 서비스가 2초마다 HTTPS로 새 연결 요청을 확인하므�
 ## 적용 순서
 
 1. 검증한 서버를 먼저 배포하고 `/healthz` 및 새 인증 API 응답을 확인합니다.
-2. 앱을 삭제하지 않고 `IDontLiveAlone-1.2.apk`를 업데이트 설치합니다. 기존 로그인과 CAMERA 연결을 유지합니다.
-3. Pi에 전원을 켜고 터미널에서 다음 한 줄을 실행합니다. `video-v1.2` 태그가 공개된 후 사용합니다.
+2. 앱을 삭제하지 않고 `IDontLiveAlone-1.2.3.apk`를 업데이트 설치합니다. 기존 로그인과 CAMERA 연결을 유지합니다.
+3. Pi에 전원을 켜고 터미널에서 다음 한 줄을 실행합니다. `video-v1.2.3` 태그가 공개된 후 사용합니다.
 
 ```sh
-f=$(mktemp) && wget -qO "$f" https://raw.githubusercontent.com/yeonh0115/IDontLIveAlone/video-v1.2/deployment/update_camera.py && sudo python3 "$f" --apply
+f=$(mktemp) && wget -qO "$f" https://raw.githubusercontent.com/yeonh0115/IDontLIveAlone/video-v1.2.3/deployment/update_camera.py && sudo python3 "$f" --apply
 ```
 
 업데이트 중 전원을 유지합니다. 고정된 Git 커밋의 소스와 패키지 목록을 SHA256으로 검사하고 `/opt/idontlivealone/rtc-*`에 별도 Python 환경을 준비합니다. 기존 `ai_env`에는 패키지를 설치하지 않습니다. 공개 PyPI의 정확히 고정된 버전과 바이너리 패키지만 사용합니다. 패키지 준비가 실패하면 기존 서비스와 소스를 변경하지 않습니다.
