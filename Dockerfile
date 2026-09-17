@@ -12,4 +12,5 @@ RUN ./gradlew clean build --no-daemon
 FROM eclipse-temurin:21-jre-jammy
 EXPOSE 10000
 COPY --from=build /home/gradle/src/build/libs/*-SNAPSHOT.jar app.jar
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+# Leave room for native libraries, thread stacks and the OS in a 512 MB instance.
+ENTRYPOINT ["java", "-Xmx192m", "-XX:MaxMetaspaceSize=128m", "-XX:ReservedCodeCacheSize=64m", "-XX:+UseSerialGC", "-Xss512k", "-jar", "/app.jar"]

@@ -187,25 +187,6 @@ class VideoTests(unittest.TestCase):
         face.predict_frame(original)
         face.cv2.resize.assert_not_called()
 
-    def test_camera_requests_ack_tls_nodelay_and_rejects_unsupported_server(self):
-        stubs = dependency_stubs()
-        camera = load_program("fin_camera.py", stubs)
-        connection = Mock()
-        connection.getheaders.return_value = {}
-        stubs["websocket"].create_connection.return_value = connection
-        output = io.StringIO()
-        with patch.object(camera.time, "sleep", side_effect=StopLoop()), contextlib.redirect_stdout(output):
-            with self.assertRaises(StopLoop):
-                camera.upload_to_cloud_websocket()
-        options = stubs["websocket"].create_connection.call_args.kwargs
-        self.assertEqual(options["header"]["X-Camera-Ack"], "1")
-        self.assertTrue(options["sslopt"]["check_hostname"])
-        self.assertTrue(options["sockopt"])
-        connection.send_binary.assert_not_called()
-        connection.shutdown.assert_called_once()
-        self.assertIn("CameraAckUnsupported", output.getvalue())
-        self.assertNotIn("connected (ACK v1)", output.getvalue())
-
 
 if __name__ == "__main__":
     unittest.main()

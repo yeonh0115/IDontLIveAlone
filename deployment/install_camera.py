@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 
-FILES = ("fin_camera.py", "fin_face.py", "pi_runtime.py", "network_diagnostics.py")
+FILES = ("fin_camera.py", "fin_face.py", "pi_runtime.py", "webrtc_transport.py", "network_diagnostics.py")
 
 
 def require_plain_path(value):

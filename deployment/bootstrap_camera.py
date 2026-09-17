@@ -17,7 +17,7 @@ BOOT_OPTIONS = (
 PAYLOAD_FILES = (
     "deployment/install_camera.py", "deployment/bootstrap_camera.py",
     "raspberrypi/fin_camera.py", "raspberrypi/fin_face.py", "raspberrypi/pi_runtime.py",
-    "raspberrypi/network_diagnostics.py", "device_client/device_pairing.py",
+    "raspberrypi/network_diagnostics.py", "raspberrypi/webrtc_transport.py", "device_client/device_pairing.py",
 )
 
 

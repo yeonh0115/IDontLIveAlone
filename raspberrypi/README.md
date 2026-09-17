@@ -1,8 +1,10 @@
 # 현관 라즈베리파이 1대
 
-`fin_camera.py`는 카메라를 촬영해 Render 웹소켓과 로컬 MJPEG로 보냅니다. `fin_face.py`는 로컬 영상을 인식하고 설정한 GPIO line을 3초 동안 HIGH로 만들며, Render에서 얼굴 학습 작업을 가져옵니다. 일반 기본값은 line 23이나, 2026-09-16 확인한 실제 Pi A SD의 설정은 **line 24, 인식 threshold 80, 연속 성공 2회**입니다. 해당 장치 설치에는 이 세 값을 명시해 기존 동작을 보존합니다. 얼굴인식 성공을 위험 이벤트로 저장하는 동작은 추가하지 않았습니다.
+`fin_camera.py`는 같은 카메라 영상을 로컬 MJPEG와 휴대폰에 직접 연결하는 WebRTC로 제공합니다. Render는 SDP 연결 정보만 중개하며 실시간 영상 바이트를 받지 않습니다. `fin_face.py`는 로컬 영상을 인식하고 설정한 GPIO line을 3초 동안 HIGH로 만들며, Render에서 얼굴 학습 작업을 가져옵니다. 일반 기본값은 line 23이나, 2026-09-16 확인한 실제 Pi A SD의 설정은 **line 24, 인식 threshold 80, 연속 성공 2회**입니다. 해당 장치 설치에는 이 세 값을 명시해 기존 동작을 보존합니다. 얼굴인식 성공을 위험 이벤트로 저장하는 동작은 추가하지 않았습니다.
 
-세 파일 `fin_camera.py`, `fin_face.py`, `pi_runtime.py`와 `device_client/device_pairing.py`를 같은 폴더에 배치합니다. 저장소에서 직접 실행할 때는 공통 helper 폴더를 그대로 사용합니다. 실행에는 기존 환경의 `rpicam-vid`, OpenCV의 `cv2.face`(contrib), NumPy, requests, Flask, websocket-client, gpiod v2가 필요합니다. GPIO 초기화 실패는 로그에 표시되며 얼굴인식만 실행됩니다.
+`fin_camera.py`, `fin_face.py`, `pi_runtime.py`, `webrtc_transport.py`와 `device_client/device_pairing.py`를 같은 폴더에 배치합니다. 저장소에서 직접 실행할 때는 공통 helper 폴더를 그대로 사용합니다. 카메라는 기존 `rpicam-vid`와 별도의 `rtc_env`를 사용합니다. `requirements-webrtc.txt`는 aiortc 1.15.0·PyAV 17.1.0·Flask·requests와 전체 의존성 25개를 고정합니다. 얼굴 서비스의 기존 `ai_env`, OpenCV contrib·NumPy·gpiod v2·모델·GPIO 설정은 변경하지 않습니다. 카메라 환경에는 OpenCV·NumPy·websocket-client가 필요하지 않습니다. GPIO 초기화 실패는 로그에 표시되며 얼굴인식만 실행됩니다.
+
+이미 자동실행 서비스가 설치된 Pi는 [영상 업데이트 안내](../docs/VIDEO_UPDATE.md)의 `deployment/update_camera.py`를 사용합니다. 검증한 코드와 별도 카메라 환경을 준비하고 카메라 서비스의 실행 환경만 전환합니다. 초기 SD용 `install_camera.py`는 기존 `ai_env`를 보존하므로 WebRTC 패키지를 설치하지 않습니다. 초기 설치 후 로컬 기능은 사용할 수 있지만, 원격 WebRTC를 사용하려면 이 업데이트 절차도 완료해야 합니다. 기존 얼굴 환경에 requirements를 직접 설치하지 마세요.
 
 ## 연결코드로 등록하기
 
@@ -12,7 +14,7 @@
 
 `DEVICE_STATE_DIR`는 기본 스크립트 폴더의 `device_state/`입니다. 최초 통신 전에 무작위 토큰을 Linux mode `0600`의 `credentials.json`에 저장하며 재시작·응답 유실에도 같은 토큰으로 등록합니다. 토큰을 지우거나 다른 Pi로 복사하지 마세요. `DEVICE_NAME`은 앱에 보이는 장치 이름입니다. 등록을 기다리는 동안 코드를 로그와 `pairing-code.json`에 표시합니다. 모니터가 없으면 PC에서 공통 helper의 `--state-dir ... --role CAMERA` 명령으로 미리 등록해 코드만 확인한 뒤 같은 private credential을 설치합니다. [SD 설치 안내](../deployment/SD_BOOTSTRAP.md)
 
-paired 모드는 얼굴 작업, 사진 업로드, WSS 영상에 같은 장치 Bearer 토큰을 사용합니다. Pi A는 `GET /api/camera/captures`에서 같은 계정의 촬영 예약을 가져오므로 새 Pi B에서 Pi A의 LAN IP를 몰라도 됩니다. 사건 발생 후 120초가 지난 예약은 새 장면을 촬영하지 않습니다. 유효한 예약은 현재 JPEG와 lease 정보를 `capture_state/pending/`에 먼저 저장하고 업로드합니다. 응답이 유실되어도 저장한 동일 JPEG를 다시 보내며 나중 장면으로 바꾸지 않습니다. 서버가 400/404/409/410/422로 거절한 원본은 `quarantine/`에 보존하고, 인증·일시적 장애는 재시도합니다. 카메라 예약 성공은 서버의 사진 저장과 함께 확정됩니다.
+paired 모드는 얼굴 작업과 HTTPS WebRTC signaling에 같은 장치 Bearer 토큰을 사용합니다. 현재 카메라 시작 경로는 WebRTC worker만 실행하며 기존 클라우드 JPEG 송신·사진 촬영 큐 worker는 실행하지 않습니다. 보존한 legacy 사진 helper의 동작 설명은 아래를 참고하세요. 실시간 영상 연결 실패를 사진 저장/업로드나 Render JPEG 중계로 전환하지 않습니다.
 
 ## 환경설정
 
@@ -29,14 +31,12 @@ paired 모드는 얼굴 작업, 사진 업로드, WSS 영상에 같은 장치 Be
 | `SOLENOID_PIN`, `FACE_THRESHOLD`, `FACE_REQUIRED_SUCCESSES` | 일반 기본 23/85/4. 실제 확인한 Pi A SD는 24/80/2로 설치 |
 | `USER_NO` | 수동 호환 모드에서만 필요한 양의 정수. 연결코드 모드에서는 서버가 확인한 계정 사용 |
 | `PI_DATA_DIR` | 스크립트가 있는 폴더. 상대경로도 스크립트 폴더 기준. `trainer/`, `facedata/`, `task_state/` 저장 위치 |
-| `REQUESTS_CA_BUNDLE` | 선택사항. 사용자 지정 CA 인증서 파일이 필요한 환경에서 설정. HTTPS와 WSS에 적용 |
-| `SSL_CERT_FILE` | 선택사항. WSS의 CA 파일; 설정 시 `REQUESTS_CA_BUNDLE`보다 우선 |
+| `REQUESTS_CA_BUNDLE` | 선택사항. 사용자 지정 CA 인증서 파일이 필요한 환경의 HTTPS 요청에 적용 |
 | `CAMERA_WIDTH`, `CAMERA_HEIGHT` | 기본 `640`, `480`. 짝수만 허용; 너비 160~1280, 높이 120~720 |
 | `CAMERA_JPEG_QUALITY` | 기본 `70`, MJPEG 품질 1~100 |
 | `CAMERA_CAPTURE_FPS` | 기본 `15`, 카메라 촬영 속도 1~30 fps |
-| `CAMERA_CLOUD_FPS` | 기본 `10`, 클라우드 송신 상한 1~촬영 FPS. 실제 속도는 ACK 왕복 시간에 따라서 낮아짐 |
-| `CAMERA_ACK_TIMEOUT` | 기본 `2`초, 한 프레임 송신 시작부터 ACK까지의 전체 제한. 0.25~10초 |
-| `CAMERA_MAX_FRAME_AGE` | 기본 `0.5`초, 클라우드가 전송할 프레임의 최대 나이. 0.05~2초; 로컬 영상의 5초 제한과 별도 |
+| `WEBRTC_FPS` | 기본 `12`, 직접 영상 전송 1~20fps이며 촬영 FPS 이하여야 함. 촬영 FPS가 12보다 작으면 해당 정수 FPS가 기본 |
+| `CAMERA_MAX_FRAME_AGE` | 기본 `0.5`초, WebRTC가 사용할 JPEG 최대 나이. 0.05~2초; 로컬 영상의 5초 제한과 별도 |
 
 TLS 인증서 검증은 기본 활성화되어 있습니다. 신뢰할 수 있는 인증서와 정상 시스템 시간을 유지해야 합니다.
 
@@ -76,15 +76,17 @@ python3 fin_face.py
 
 새 Pi B는 `expected_user_no`도 전달합니다. 이 값이 Pi A의 `USER_NO`와 다르면 업로드 전에 403으로 거부하며, 일치하면 성공 응답에 `user_no`를 포함합니다. 기존 호출처럼 이 검증값을 생략할 수 있지만, 쿼리로 실제 업로드 계정을 바꾸지는 못합니다.
 
-`/video_feed`, `/snapshot`, `/` 주소와 포트 5002는 유지합니다. 카메라 프로세스가 종료되면 이전 프레임을 지우고 2초 뒤 다시 시작합니다. 5초 이상 갱신되지 않은 영상은 현재 사진으로 반환하지 않습니다. 웹소켓은 연결 종료 후 재접속합니다.
+`/video_feed`, `/snapshot`, `/` 주소와 포트 5002는 유지합니다. 카메라 프로세스가 종료되면 이전 프레임을 지우고 2초 뒤 다시 시작합니다. 5초 이상 갱신되지 않은 영상은 현재 프레임으로 반환하지 않습니다. 원격 직접 연결이 종료되면 앱의 새 offer로 다시 협상합니다.
 
-기본 영상은 **640×480, JPEG 품질 70, 촬영 15fps, 클라우드 최대 10fps**입니다. 촬영 스레드는 stdout을 계속 읽으며 최신 JPEG 한 장만 보관합니다. WSS 연결 시 `X-Camera-Ack: 1`을 요청하고 응답 헤더의 같은 값을 확인합니다. JPEG binary 메시지 하나를 보낸 뒤 서버의 text `ack`를 받아야 다음 최신 JPEG를 선택합니다. 대기 중 촬영된 중간 프레임은 차례로 쌓아 보내지 않습니다. 한 JPEG가 512 KiB를 넘으면 클라우드 전송에서 제외합니다.
+기본 영상은 **640×480, JPEG 품질 70, 촬영 15fps, WebRTC 최대 12fps**입니다. 촬영 스레드는 stdout을 계속 읽으며 최신 JPEG 한 장만 보관합니다. WebRTC track은 이 프레임을 PyAV로 디코딩하고 aiortc에 전달합니다. 디코딩·HTTPS 요청은 asyncio 이벤트 루프 밖에서 처리하며 새 카메라 장치를 중복해서 열지 않습니다. 프레임 저장 대기열은 없고, 512 KiB를 넘거나 오래된 JPEG는 사용하지 않습니다. aiortc의 인코딩은 별도 처리되며 실제 Pi4 CPU 부하·화질·모바일망 지연은 장치 시험이 필요합니다.
 
-ACK를 지원하는 서버를 먼저 배포해야 합니다. 지원 헤더가 없거나 응답이 잘못되면 연결을 폐기하고 오류 종류만 기록한 뒤 재연결합니다. 자동으로 무제한 송신 방식으로 전환하지 않습니다. 송신과 ACK 수신을 합친 전체 deadline을 단조 시계와 socket abort watchdog으로 검사하므로 부분 송수신이 계속되어도 제한 시간이 초기화되지 않습니다. 종료한 watchdog은 회수하고 연결은 close handshake 대기 없이 닫습니다. TLS 인증서 검증은 유지합니다.
+`GET /api/rtc/camera/next`를 2초 간격으로 조회하며 동일 offer 협상은 중복 실행하지 않습니다. 새 offer는 이전 peer를 닫습니다. full SDP answer만 서버에 보내며 trickle ICE·TURN·클라우드 JPEG fallback은 사용하지 않습니다. Google STUN `stun:stun.l.google.com:19302`를 사용합니다. 학교망에서 과거 연결에 성공했더라도 현재 NAT/방화벽 경로의 직접 연결 성공은 실제 Pi와 휴대폰으로 확인해야 합니다. [전체 계약](../docs/WEBRTC_CONTRACT.md)
 
-정상 연결 로그는 `[camera] Render WebSocket connected (ACK v1)`입니다. 연결이 유지되면 30초마다 실제 FPS, ACK가 확인된 JPEG 바이트 합계, ACK 평균/최대 시간, 크기 초과 개수를 기록합니다. 토큰·사용자 번호·이미지 내용은 기록하지 않습니다. ACK는 Pi→서버 수신 확인이므로 앱 화면까지의 지연을 보장하는 값은 아닙니다.
+활성 세션 상태를 10초 간격으로 확인하며 CLOSED/EXPIRED·권한 철회·서버 재시작으로 세션을 잃으면 peer를 닫습니다. 상태를 확인할 수 없는 동안은 별도 감시 태스크가 마지막 확인부터 최대 45초와 서버 `expiresAt` 중 빠른 시점을 적용합니다. 긴 HTTP 요청이 이 감시를 막지 않습니다. PENDING 협상은 최대 90초, READY는 최대 30분으로 제한합니다. 요청 실패 후 동일 answer 재시도는 같은 SDP를 사용합니다. 로컬 촬영과 얼굴 인식은 인터넷 연결이나 WebRTC 패키지 유무와 독립적으로 계속 실행합니다.
 
-얼굴 검출 입력은 영상 해상도와 관계없이 종횡비를 유지한 최대 **160×120**으로 제한합니다. 기본 640×480 영상도 기존 320×240 영상과 같은 검출 입력 크기를 사용하며, 학습 이미지 처리·모델·인식 threshold·GPIO 설정은 바꾸지 않습니다. 720p는 `CAMERA_WIDTH=1280`, `CAMERA_HEIGHT=720`, 예를 들어 촬영 15fps/클라우드 5fps로 선택할 수 있지만 Pi의 CPU·네트워크와 실제 화면 지연을 확인한 뒤 적용하세요. 환경변수만 변경하면 코드 재편집은 필요 없습니다.
+`GET http://127.0.0.1:5002/video_status`는 `transport=webrtc`, `runtimeAvailable`, `signalingReady`, `state`, `error`, `fps`, `framesSent`, `turnConfigured=false`를 반환합니다. runtimeAvailable은 패키지 import 성공, signalingReady 및 `[webrtc] signaling ready` 로그는 신호 API에 도달했음을 뜻합니다. 실제 휴대폰 영상 연결 완료는 `state=connected`와 휴대폰의 영상 수신으로 별도 확인합니다. 세션 UUID·토큰·SDP·ICE 사설 주소는 상태나 로그에 출력하지 않습니다. 패키지가 없으면 `unavailable`과 예외 종류만 기록하며 로컬 기능은 유지합니다.
+
+얼굴 검출 입력은 영상 해상도와 관계없이 종횡비를 유지한 최대 **160×120**으로 제한합니다. 기본 640×480 영상도 기존 320×240 영상과 같은 검출 입력 크기를 사용하며 학습 이미지 처리·모델·인식 threshold·GPIO 설정은 바꾸지 않습니다. 720p 설정은 별도 성능 확인 후 선택하세요.
 
 ## 하드웨어 없는 검증
 
@@ -108,4 +110,4 @@ python3 network_diagnostics.py
 python3 -m unittest discover -s tests -v
 ```
 
-표준 Python만으로 실행됩니다. 외부 모듈과 네트워크·카메라 호출은 대체 객체를 사용합니다. 설정, TLS 검증 옵션, 카메라 EOF 복구, 이벤트 ID/사용자 번호, 오래된 프레임, 결과 ACK/재시작/409, 모델 저장 직후 중단 후 재실행의 중복 방지를 검증합니다. 실제 Pi의 촬영 속도·얼굴 인식 정확도·GPIO·서비스 자동시작·배포 서버 연결은 별도 장치 검증이 필요합니다.
+일반 검증은 표준 Python과 대체 객체를 사용하며 카메라·GPIO·운영 API를 호출하지 않습니다. WebRTC 패키지가 없는 환경에서는 실제 peer 테스트 하나만 건너뜁니다. camera 전용 환경에서 같은 명령을 실행하면 합성 JPEG를 실제 aiortc peer 두 개 사이에 전달하여 640×480 수신을 검증합니다. 해당 테스트는 STUN 서버·Render를 호출하지 않고 호스트 후보만 사용합니다. 중복 offer, 새 세션 교체, answer 응답 유실, 권한 상실, 만료 및 블로킹 HTTP 중에도 peer가 종료되는지 검증합니다. requirements의 전체 25개 패키지는 CPython3.13 ARM64용 binary-only 다운로드까지 확인했습니다. 실제 Pi의 촬영 속도·얼굴 인식 정확도·GPIO·서비스 자동시작·학교 Wi-Fi→휴대폰 LTE 연결은 별도 장치 검증이 필요합니다.

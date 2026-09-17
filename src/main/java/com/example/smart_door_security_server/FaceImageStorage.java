@@ -21,12 +21,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 
 @Component
 public class FaceImageStorage {
     private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final int MAX_DECODED_SIDE = 1280;
     private final Path pictureRoot;
+    private final Semaphore conversionPermit = new Semaphore(1);
 
     public FaceImageStorage(@Value("${app.storage-dir:./data}") String storageDirectory) {
         pictureRoot = Path.of(storageDirectory).toAbsolutePath().normalize().resolve("pictures");
@@ -39,8 +42,11 @@ public class FaceImageStorage {
         }
         Path taskDirectory = pictureRoot.resolve(taskId).normalize();
         if (!taskDirectory.startsWith(pictureRoot)) throw new IllegalArgumentException("Invalid image directory");
-        Files.createDirectories(taskDirectory);
+        if (!conversionPermit.tryAcquire()) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "얼굴 사진을 처리 중입니다. 잠시 후 다시 시도해 주세요.");
+        }
         try {
+            Files.createDirectories(taskDirectory);
             for (int i = 0; i < files.size(); i++) {
                 saveImage(files.get(i), taskDirectory.resolve("face" + (i + 1) + ".jpg"));
             }
@@ -48,6 +54,8 @@ public class FaceImageStorage {
         } catch (IOException | RuntimeException ex) {
             delete(taskDirectory);
             throw ex;
+        } finally {
+            conversionPermit.release();
         }
     }
 
@@ -71,12 +79,17 @@ public class FaceImageStorage {
                 if (width < 32 || height < 32 || width > 8192 || height > 8192 || (long) width * height > 20_000_000) {
                     throw badRequest("얼굴 사진은 가로·세로 32~8192 픽셀, 총 2천만 픽셀 이하여야 합니다.");
                 }
-                BufferedImage source = reader.read(0);
-                BufferedImage rgb = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+                // Bound decoded pixels before allocating an image, including highly compressed inputs.
+                var parameters = reader.getDefaultReadParam();
+                int sampling = Math.max((width + MAX_DECODED_SIDE - 1) / MAX_DECODED_SIDE,
+                        (height + MAX_DECODED_SIDE - 1) / MAX_DECODED_SIDE);
+                parameters.setSourceSubsampling(sampling, sampling, 0, 0);
+                BufferedImage source = reader.read(0, parameters);
+                BufferedImage rgb = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_RGB);
                 Graphics2D graphics = rgb.createGraphics();
                 try {
                     graphics.setColor(Color.WHITE);
-                    graphics.fillRect(0, 0, width, height);
+                    graphics.fillRect(0, 0, rgb.getWidth(), rgb.getHeight());
                     graphics.drawImage(source, 0, 0, null);
                 } finally {
                     graphics.dispose();

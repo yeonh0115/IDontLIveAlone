@@ -31,21 +31,33 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="#000000">
-                <ImageView
+                <FrameLayout
                     android:id="@+id/cctv_view"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:contentDescription="@string/camera_live_description"
-                    android:scaleType="fitCenter" />
-                <TextView
-                    android:id="@+id/cctv_status"
+                    android:contentDescription="@string/camera_live_description" />
+                <LinearLayout
+                    android:id="@+id/cctv_overlay"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:gravity="center"
-                    android:padding="20dp"
-                    android:text="@string/camera_waiting"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp" />
+                    android:orientation="vertical"
+                    android:padding="20dp">
+                    <TextView
+                        android:id="@+id/cctv_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="@string/camera_waiting"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp" />
+                    <Button
+                        android:id="@+id/cctv_retry"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/camera_retry"
+                        android:visibility="gone" />
+                </LinearLayout>
             </FrameLayout>
         </androidx.cardview.widget.CardView>
 

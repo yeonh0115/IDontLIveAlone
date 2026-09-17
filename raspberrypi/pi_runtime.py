@@ -48,6 +48,7 @@ class Settings:
             raise ValueError("Camera width and height must be even")
         self.camera_jpeg_quality = bounded_setting(env, "CAMERA_JPEG_QUALITY", 70, 1, 100, True)
         self.camera_capture_fps = bounded_setting(env, "CAMERA_CAPTURE_FPS", 15, 1, 30)
+        self.webrtc_fps = bounded_setting(env, "WEBRTC_FPS", min(12, int(self.camera_capture_fps)), 1, min(20, self.camera_capture_fps), True)
         self.camera_cloud_fps = bounded_setting(env, "CAMERA_CLOUD_FPS", 10, 1, self.camera_capture_fps)
         self.camera_ack_timeout = bounded_setting(env, "CAMERA_ACK_TIMEOUT", 2, 0.25, 10)
         self.camera_max_frame_age = bounded_setting(env, "CAMERA_MAX_FRAME_AGE", 0.5, 0.05, 2)

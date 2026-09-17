@@ -291,15 +291,6 @@ class CameraTests(unittest.TestCase):
             self.assertTrue(process.stdout.closed)
             process.wait.assert_called_once()
 
-    def test_websocket_requests_verified_tls(self):
-        connect = self.stubs["websocket"].create_connection
-        connect.side_effect = StopLoop()
-        with self.assertRaises(StopLoop):
-            self.camera.upload_to_cloud_websocket()
-        options = connect.call_args.kwargs["sslopt"]
-        self.assertEqual(options["cert_reqs"], ssl.CERT_REQUIRED)
-        self.assertIs(options["check_hostname"], True)
-
     def test_trigger_keeps_log_id_and_uses_configured_account_only(self):
         self.camera.settings = Settings({"USER_NO": "42", "EVENT_PHOTOS_ENABLED": "true"}, ROOT)
         self.camera.frames.put(b"JPEG")

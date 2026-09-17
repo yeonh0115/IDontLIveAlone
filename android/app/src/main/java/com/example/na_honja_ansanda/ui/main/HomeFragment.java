@@ -15,7 +15,8 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
-import android.widget.ImageView;
+import android.widget.FrameLayout;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -33,7 +34,7 @@ import com.example.na_honja_ansanda.data.model.IntegratedLog;
 import com.example.na_honja_ansanda.data.model.LoadState;
 import com.example.na_honja_ansanda.data.remote.ApiClient;
 import com.example.na_honja_ansanda.data.session.SessionManager;
-import com.example.na_honja_ansanda.data.video.LatestFrameViewer;
+import com.example.na_honja_ansanda.data.video.WebRtcViewer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -56,9 +57,11 @@ public class HomeFragment extends Fragment {
     private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
 
     private ProgressBar audioProgressBar;
-    private ImageView cameraView;
+    private FrameLayout cameraView;
     private TextView cameraStatus;
-    private LatestFrameViewer cameraViewer;
+    private View cameraOverlay;
+    private Button cameraRetry;
+    private WebRtcViewer cameraViewer;
     private WebSocket webSocket;
     private AudioRecord audioRecord;
 
@@ -98,6 +101,8 @@ public class HomeFragment extends Fragment {
         audioProgressBar = view.findViewById(R.id.audio_progress);
         cameraView = view.findViewById(R.id.cctv_view);
         cameraStatus = view.findViewById(R.id.cctv_status);
+        cameraOverlay = view.findViewById(R.id.cctv_overlay);
+        cameraRetry = view.findViewById(R.id.cctv_retry);
         sensorContainer = view.findViewById(R.id.sensor_container);
 
         tvDangerCount = view.findViewById(R.id.tv_danger_count);
@@ -132,23 +137,23 @@ public class HomeFragment extends Fragment {
     }
 
     private void setupCameraViewer() {
-        cameraViewer = new LatestFrameViewer(new LatestFrameViewer.Credentials() {
+        cameraViewer = new WebRtcViewer(cameraView, new WebRtcViewer.Credentials() {
             @Override public String authorization() { return sessionManager.getAuthorizationHeader(); }
             @Override public long revision() { return sessionManager.getSessionRevision(); }
-        }, new LatestFrameViewer.Listener() {
-            @Override public void onFrame(android.graphics.Bitmap bitmap) {
+        }, new WebRtcViewer.Listener() {
+            @Override public void onStatus(WebRtcViewer.Status status) {
                 if (cameraView == null) return;
-                cameraView.setImageBitmap(bitmap);
-                cameraStatus.setVisibility(View.GONE);
-            }
-            @Override public void onStatus(LatestFrameViewer.Status status) {
-                if (cameraView == null) return;
-                cameraView.setImageDrawable(null);
-                cameraStatus.setText(status == LatestFrameViewer.Status.LOGIN_REQUIRED
-                        ? R.string.camera_login_required : R.string.camera_waiting);
-                cameraStatus.setVisibility(View.VISIBLE);
+                cameraOverlay.setVisibility(status == WebRtcViewer.Status.PLAYING ? View.GONE : View.VISIBLE);
+                int message = R.string.camera_waiting;
+                if (status == WebRtcViewer.Status.PREPARING) message = R.string.camera_preparing;
+                if (status == WebRtcViewer.Status.LOGIN_REQUIRED) message = R.string.camera_login_required;
+                else if (status == WebRtcViewer.Status.NO_CAMERA) message = R.string.camera_not_paired;
+                else if (status == WebRtcViewer.Status.DIRECT_UNAVAILABLE) message = R.string.camera_direct_unavailable;
+                cameraStatus.setText(message);
+                cameraRetry.setVisibility(status == WebRtcViewer.Status.DIRECT_UNAVAILABLE ? View.VISIBLE : View.GONE);
             }
         });
+        cameraRetry.setOnClickListener(view -> { if (cameraViewer != null) cameraViewer.start(); });
     }
 
     @Override public void onStart() {
@@ -599,6 +604,8 @@ public class HomeFragment extends Fragment {
         if (cameraViewer != null) { cameraViewer.close(); cameraViewer = null; }
         cameraView = null;
         cameraStatus = null;
+        cameraOverlay = null;
+        cameraRetry = null;
         if (logsCall != null) logsCall.cancel();
         isRecording = false;
         stopAudioRecord();

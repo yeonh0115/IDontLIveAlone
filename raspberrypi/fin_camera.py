@@ -1,23 +1,20 @@
-"""Camera capture, local MJPEG and Render transport for the door Raspberry Pi."""
+"""Shared local capture and direct WebRTC video for the door Raspberry Pi."""
 import datetime
-import os
-import socket
-import ssl
 import subprocess
 import threading
 import time
 
 import requests
-import websocket
 from flask import Flask, Response, jsonify, request
 
-from pi_runtime import AckVideoSender, CaptureQueue, LatestFrame, Settings, event_log_id, require_camera_ack, upload_fields
+from pi_runtime import CaptureQueue, LatestFrame, Settings, event_log_id, upload_fields
+from webrtc_transport import WebRtcWorker
 
 app = Flask(__name__)
 settings = Settings()
 frames = LatestFrame()
-RENDER_WS_URL = settings.websocket_url
 RENDER_UPLOAD_URL = settings.api_url("/api/upload")
+video_transport = WebRtcWorker(settings, frames, logger=lambda message: print(message, flush=True))
 
 def capture_camera():
     command = [
@@ -59,36 +56,6 @@ def capture_camera():
                 if process.stdout:
                     process.stdout.close()
         time.sleep(2)
-
-def upload_to_cloud_websocket():
-    while True:
-        connection = None
-        try:
-            ssl_options = {"cert_reqs": ssl.CERT_REQUIRED, "check_hostname": True}
-            ca_bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
-            if ca_bundle:
-                ssl_options["ca_certs"] = ca_bundle
-            headers = dict(settings.auth_headers())
-            headers["X-Camera-Ack"] = "1"
-            socket_options = [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)] if hasattr(socket, "TCP_NODELAY") else []
-            connection = websocket.create_connection(
-                RENDER_WS_URL, timeout=5, sslopt=ssl_options, header=headers, sockopt=socket_options,
-            )
-            require_camera_ack(connection)
-            sender = AckVideoSender(frames, settings, logger=lambda message: print(message, flush=True))
-            print("[camera] Render WebSocket connected (ACK v1)", flush=True)
-            while True:
-                sender.step(connection)
-                time.sleep(0.005)
-        except Exception as error:
-            print(f"[camera] WebSocket disconnected: {type(error).__name__}; retrying in 3 seconds", flush=True)
-        finally:
-            if connection is not None:
-                try:
-                    connection.shutdown()  # Discard queued bytes; do not wait for a close handshake.
-                except Exception:
-                    pass
-        time.sleep(3)
 
 def upload_event_image(log_id=None):
     if not settings.event_photos_enabled:
@@ -183,6 +150,10 @@ def snapshot():
         return "Camera frame not ready", 503
     return Response(frame, mimetype="image/jpeg")
 
+@app.route("/video_status")
+def video_status():
+    return jsonify(**video_transport.status())
+
 @app.route("/trigger_event")
 def trigger_event():
     if not settings.event_photos_enabled:
@@ -205,10 +176,7 @@ def trigger_event():
     return jsonify(status="error", message="Camera unavailable or upload to cloud failed", log_id=log_id), 502
 
 def start_cloud_transport():
-    settings.activate_pairing()
-    threading.Thread(target=upload_to_cloud_websocket, daemon=True).start()
-    if settings.device and settings.event_photos_enabled:
-        threading.Thread(target=poll_capture_queue, daemon=True).start()
+    video_transport.run()
 
 
 if __name__ == "__main__":
