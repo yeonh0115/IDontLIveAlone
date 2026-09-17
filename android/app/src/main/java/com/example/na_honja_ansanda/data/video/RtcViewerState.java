@@ -23,7 +23,7 @@ public final class RtcViewerState {
     }
     public boolean offer(long id, String sdp, long now) {
         if (!current(id) || phase != Phase.GATHERING || !validSdp(sdp)) return false;
-        phase = Phase.CREATING; deadline = now + 80000; return true;
+        phase = Phase.CREATING; deadline = now + 185000; return true;
     }
     public boolean created(long id, String sessionId, long now) {
         if (!current(id) || phase != Phase.CREATING || !validSessionId(sessionId)) return false;

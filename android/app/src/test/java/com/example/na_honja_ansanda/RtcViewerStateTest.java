@@ -75,12 +75,12 @@ public class RtcViewerStateTest {
     }
     @Test public void initialCreateAllowsColdStartButStillHasAHardDeadline() {
         long id = state.start(0); state.pageReady(id, 1); state.offer(id, SDP, 2);
-        assertFalse(state.expired(70000));
-        assertFalse(state.expired(80001));
-        assertTrue(state.expired(80002));
+        assertFalse(state.expired(142097)); // Observed production process startup.
+        assertFalse(state.expired(185001));
+        assertTrue(state.expired(185002));
         state.stop();
         id = state.start(90000); state.pageReady(id, 90001); state.offer(id, SDP, 90002);
-        assertTrue(state.created(id, SESSION, 160000));
+        assertTrue(state.created(id, SESSION, 232097));
         assertTrue(state.poll(id));
     }
     @Test public void sessionIdCannotSelectAnArbitraryApiPath() {

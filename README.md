@@ -17,7 +17,7 @@
 
 ## 동작
 
-- CCTV: Pi A → `/ws/camera` → Render → `/video_feed` → 앱.
+- CCTV: Pi A ↔ 앱의 WebRTC 직접 연결. Render의 `/api/rtc`는 인증된 연결 메시지만 교환합니다. 새 앱·Pi에는 유료 TURN이나 JPEG 중계 대체 경로가 없습니다.
 - 얼굴 등록: 앱 사진 3장 → 서버 파일·`face_tasks` 저장 → Pi 작업 수신·학습 → 결과 저장 → 앱에서 실제 완료 확인.
 - 장치 연결: 장치가 표시한 8자리 코드를 앱에 입력 → 로그인 계정에 연결. Pi IP와 사용자 번호 수동 입력을 줄입니다.
 - 현장 인증: Pi 로컬 모델 → 등록 얼굴 연속 확인 → 설정한 GPIO를 3초간 HIGH → FPGA. 설치할 카드의 기존 핀·인식 기준을 유지합니다.
@@ -25,9 +25,9 @@
 - 센서 기록: Pi B의 STM32 UART → 디스크 대기열 → 인증된 `POST /api/device/events` → Aiven 저장. 같은 이벤트 ID의 재전송은 중복 기록하지 않습니다.
 - 일간 리포트: PC → 날짜별 인증 로그 조회 → OpenAI 요약 → 인증된 `POST /api/reports/generated`. 사건 수는 서버가 계산합니다.
 
-수정된 앱·Pi·PC 프로그램은 Aiven DB 포트에 직접 연결하지 않습니다. 학교망에서는 Render HTTPS/WSS 443 접근이 필요하며, Render 서버가 Aiven에 연결합니다. DB 관리 도구의 직접 연결에는 별도 네트워크 정책이 적용될 수 있습니다.
+수정된 앱·Pi·PC 프로그램은 Aiven DB 포트에 직접 연결하지 않습니다. 계정·기기·센서·연결 메시지는 Render HTTPS 443을 사용하고 Render 서버가 Aiven에 연결합니다. WebRTC 영상에는 별도의 STUN/직접 통신 경로가 필요하며 학교망↔LTE 현장 시험으로 확인합니다. DB 관리 도구의 직접 연결에는 별도 네트워크 정책이 적용될 수 있습니다.
 
-설정과 적용 순서는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), Pi 실행 방법은 [raspberrypi/README.md](raspberrypi/README.md)를 참고하세요.
+현재 영상 업데이트는 [docs/VIDEO_UPDATE.md](docs/VIDEO_UPDATE.md)를 참고하세요. 최초 설치와 계정 설정은 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), Pi 실행 방법은 [raspberrypi/README.md](raspberrypi/README.md)에 있습니다.
 
 ## 로컬 검증
 

@@ -50,7 +50,7 @@ public final class WebRtcViewer implements AutoCloseable {
             .followRedirects(false).followSslRedirects(false).build();
     private static final OkHttpClient CLOSE_HTTP = HTTP.newBuilder().callTimeout(5, TimeUnit.SECONDS).build();
     private static final OkHttpClient CREATE_HTTP = HTTP.newBuilder()
-            .readTimeout(75, TimeUnit.SECONDS).callTimeout(75, TimeUnit.SECONDS).build();
+            .readTimeout(180, TimeUnit.SECONDS).callTimeout(180, TimeUnit.SECONDS).build();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final RtcViewerState state = new RtcViewerState();
     private final FrameLayout container;

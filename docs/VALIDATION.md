@@ -73,13 +73,15 @@ Docker 실행기가 없어 로컬 컨테이너 빌드는 하지 않았고, Rende
 ## WebRTC 직접 영상 (2026-09-17)
 
 - 서버 UTC `clean build`: 79개 통과, 실패·오류·건너뜀 0. 실제 HTTP의 소유권·토큰 철회·기기 역할·크기 제한·만료·세션 교체와 영상 캐시를 거치지 않는 SDP 교환을 검증했습니다.
-- Android 1.2/versionCode3: JVM 26개와 내장 페이지 모의 검사 7개 통과. assembleDebug 성공, lint 오류 0·경고 192. 최초 API 연결은 무료 서버의 콜드 스타트를 고려해 최대75초 대기하며 이후 요청은10초로 제한합니다.
+- Android 1.2/versionCode3: JVM 26개와 내장 페이지 모의 검사 7개 통과. assembleDebug 성공, lint 오류 0·경고 192. 무료 인스턴스의 실제 기동 시간이 약142초여서 최초 API 연결을 최대180초(상태 제한185초)로 보완했고 이후 요청은10초로 제한합니다.
 - Pi: 56개 통과, 건너뜀 0. 합성 JPEG를 실제 aiortc/PyAV 두 peer 사이에서 암호화 전송해 640×480 프레임을 수신했습니다. 이 시험은 PC의 host 후보만 사용하며 외부 STUN이나 운영 서버를 호출하지 않습니다.
 - Python3.13/ARM64 바이너리 패키지 25개의 전체 의존성을 다운로드해 확인하고 버전을 고정했습니다. Pi에서 설치·카메라 촬영·CPU 부하를 실행 검증한 결과는 아닙니다.
 - 초기 설치·업데이트 검사 13개 통과. 변경 소스·미고정 의존성을 거부하고, 기존 연결정보·모델·얼굴 가상환경 보존 및 시작 실패 시 기존 소스·서비스 실행환경 복구를 검증했습니다.
 - 192MiB Java 힙으로 실제 로컬 서버를 실행해 20MP JPEG와 투명 PNG 각3장 등록이 모두 HTTP202, 관련32건의 HTTP가 성공했습니다. 기존 메모리 부족 문제는 디코딩 전 축소와 단일 변환 제한으로 수정했습니다. 기동 포함 최대 RSS427.6MiB였으며 Linux512MB 환경과0.1CPU 성능은 실제 Render에서 별도 확인해야 합니다.
 
 서버 JAR SHA256: `132e267f8425ae5de6fb582f6f54473a472bff7a40441557f75ba57bb96bb2e5`.
-Android APK SHA256: `ad38a619e4fc00f0b41d7d899bf8d9aff34fad1c7e48f651c0ccf9423ff6d0e5`.
+Android APK SHA256: `2713bf2a377b39ee54d39adf7051516978543f1cdd4f11a1ac2c9377ed93bd7e`.
 
 Pi는 현재 꺼져 있어 실제 학교망↔LTE 연결·지연·화질·얼굴/GPIO 동작은 미검증입니다. 적용 순서는 [VIDEO_UPDATE.md](VIDEO_UPDATE.md), 신호 API 계약은 [WEBRTC_CONTRACT.md](WEBRTC_CONTRACT.md)에 있습니다.
+
+서버 `94b3940792b9d4bbe0529cc8a3504bea67307bf3`는 19:25 KST에 Render Linux 빌드·배포를 통과했고, 19:28 KST에 같은 코드의 Free 인스턴스 전환도 성공했습니다. 전환 후 DB `/healthz`200, 인증 없는 RTC API401, 연결된 CAMERA의 대기 API204, 이벤트 사진 업로드410을 확인했습니다. Free의 CPU·메모리 상세 그래프는 유료 기능이라 실제 RSS 수치는 확인하지 못했습니다. Android의 대기 시간 후속 변경은 서버 실행 코드에 영향을 주지 않습니다.
