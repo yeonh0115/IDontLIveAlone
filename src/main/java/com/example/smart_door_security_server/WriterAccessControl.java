@@ -42,6 +42,27 @@ public class WriterAccessControl {
         return resolve(authorization, userNo, DeviceRole.SENSOR, deviceToken, deviceUserNo);
     }
 
+    public AccessGrant resolveEvent(String authorization, Integer userNo, IntegratedLog.LogType logType,
+            String subType, IntegratedLog.Severity severity) {
+        if (devices != null) {
+            var known = devices.findKnown(authorization);
+            if (known.isPresent()) {
+                var device = known.get();
+                DeviceRole role = DeviceRole.SENSOR;
+                if (device.getRole() == DeviceRole.CAMERA) {
+                    if (logType != IntegratedLog.LogType.SECURITY || !"흉기감지".equals(subType)
+                            || severity != IntegratedLog.Severity.high) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "카메라는 흉기감지 보안 이벤트만 등록할 수 있습니다.");
+                    }
+                    role = DeviceRole.CAMERA;
+                }
+                return new AccessGrant(devices.identity(device, role, userNo).userNo(), true);
+            }
+        }
+        return new AccessGrant(require(authorization, userNo, deviceToken, deviceUserNo), false);
+    }
+
     public AccessGrant resolveReport(String authorization, Integer userNo) {
         return resolve(authorization, userNo, DeviceRole.REPORT, reportToken, reportUserNo);
     }

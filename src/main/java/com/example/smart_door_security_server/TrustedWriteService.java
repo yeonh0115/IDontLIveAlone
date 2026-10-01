@@ -35,7 +35,8 @@ public class TrustedWriteService {
 
     @Transactional
     public EventResponse saveEvent(String authorization, EventRequest request) {
-        var grant = access.resolveDevice(authorization, request.userNo());
+        var grant = access.resolveEvent(authorization, request.userNo(), request.logType(),
+                request.subType(), request.severity());
         request = new EventRequest(request.eventId(), grant.userNo(), request.occurredAt(), request.logType(),
                 request.subType(), request.val1(), request.val2(), request.severity(), request.description());
         requireId(request.eventId());
