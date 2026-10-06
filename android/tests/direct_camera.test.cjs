@@ -76,7 +76,7 @@ test('native answer becomes only an answer SDP; video attaches a receive track',
   assert.deepEqual(f.calls.states, ['playing']);
 });
 
-test('incomplete ICE gathering fails instead of sending partial SDP', async () => {
+test('incomplete ICE gathering with no candidates still fails without an offer', async () => {
   const f = fixture({gathering: 'gathering'});
   const starting = f.api.start();
   await new Promise(resolve => setImmediate(resolve));
@@ -88,6 +88,106 @@ test('incomplete ICE gathering fails instead of sending partial SDP', async () =
   assert.equal(f.peer.closed, true);
   assert.ok(f.calls.diagnostics.includes('ice_gather_timeout'));
   assert.deepEqual(f.calls.iceCounts, [[false, 0, 0, 0]]);
+});
+
+const hostCandidate = 'a=candidate:1 1 udp 2122260223 192.0.2.10 50000 typ host\r\n';
+const reflexiveCandidate = 'a=candidate:2 1 udp 1686052607 203.0.113.10 51000 typ srflx raddr 192.0.2.10 rport 50000\r\n';
+const relayCandidate = 'a=candidate:3 1 udp 1677734911 198.51.100.10 52000 typ relay\r\n';
+
+async function gatheringFixture(sdp = 'v=0\r\n') {
+  const f = fixture({gathering: 'gathering', offerPromise: Promise.resolve({type: 'offer', sdp})});
+  const starting = f.api.start();
+  await new Promise(resolve => setImmediate(resolve));
+  return {f, starting};
+}
+
+test('ten-second Wi-Fi gathering deadline submits the available host and reflexive snapshot once', async () => {
+  const {f, starting} = await gatheringFixture();
+  assert.equal(f.calls.offers.length, 0);
+  // Candidates arrive after createOffer, as in the failing phone's gathering log.
+  const snapshot = 'v=0\r\n' + hostCandidate + reflexiveCandidate;
+  f.peer.localDescription = {type: 'offer', sdp: snapshot};
+  await f.timer(10000);
+  await starting;
+  assert.deepEqual(f.calls.offers, [snapshot]);
+  assert.deepEqual(f.calls.iceCounts, [[false, 1, 1, 0]]);
+  assert.ok(f.calls.diagnostics.includes('ice_gather_partial'));
+  assert.equal(f.calls.diagnostics.includes('ice_gather_complete'), false);
+  assert.equal(f.calls.diagnostics.includes('ice_gather_timeout'), false);
+  assert.deepEqual(f.calls.states, []);
+  assert.equal(f.peer.closed, undefined);
+  assert.equal(f.peer.events.has('icegatheringstatechange'), false);
+  assert.doesNotMatch(f.calls.offers[0], /end-of-candidates/);
+});
+
+test('a host-only snapshot can attempt a local connection after the gathering deadline', async () => {
+  const snapshot = 'v=0\r\n' + hostCandidate;
+  const {f, starting} = await gatheringFixture(snapshot);
+  await f.timer(10000);
+  await starting;
+  assert.deepEqual(f.calls.offers, [snapshot]);
+  assert.deepEqual(f.calls.iceCounts, [[false, 1, 0, 0]]);
+  assert.ok(f.calls.diagnostics.includes('ice_gather_partial'));
+  assert.deepEqual(f.calls.states, []);
+  assert.equal(f.peer.closed, undefined);
+});
+
+test('relay-only gathering still fails without submitting an offer', async () => {
+  const {f, starting} = await gatheringFixture('v=0\r\n' + relayCandidate);
+  await f.timer(10000);
+  await starting;
+  assert.deepEqual(f.calls.offers, []);
+  assert.deepEqual(f.calls.iceCounts, [[false, 0, 0, 1]]);
+  assert.deepEqual(f.calls.states, ['failed']);
+  assert.ok(f.calls.diagnostics.includes('ice_gather_timeout'));
+  assert.equal(f.calls.diagnostics.includes('ice_gather_partial'), false);
+  assert.equal(f.peer.closed, true);
+});
+
+test('late gathering completion cannot submit another offer after the snapshot', async () => {
+  const snapshot = 'v=0\r\n' + hostCandidate + reflexiveCandidate;
+  const {f, starting} = await gatheringFixture(snapshot);
+  const lateCompletion = f.peer.events.get('icegatheringstatechange');
+  await f.timer(10000);
+  await starting;
+  assert.equal(f.peer.events.has('icegatheringstatechange'), false);
+  f.peer.localDescription = {type: 'offer', sdp: snapshot + 'a=end-of-candidates\r\n'};
+  f.peer.iceGatheringState = 'complete';
+  lateCompletion(); // Even an already-queued completion must not submit twice.
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(f.calls.offers, [snapshot]);
+  assert.equal(f.calls.diagnostics.filter(value => value === 'offer_submit').length, 1);
+  assert.equal(f.calls.diagnostics.filter(value => value === 'ice_gather_partial').length, 1);
+  assert.equal(f.calls.diagnostics.includes('ice_gather_complete'), false);
+  assert.deepEqual(f.calls.states, []);
+});
+
+test('closing during candidate gathering prevents a deadline snapshot from escaping', async () => {
+  const {f, starting} = await gatheringFixture('v=0\r\n' + hostCandidate + reflexiveCandidate);
+  f.api.close();
+  await f.timer(10000);
+  await starting;
+  assert.deepEqual(f.calls.offers, []);
+  assert.deepEqual(f.calls.iceCounts, []);
+  assert.deepEqual(f.calls.states, []);
+  assert.equal(f.calls.diagnostics.includes('ice_gather_partial'), false);
+  assert.equal(f.calls.diagnostics.includes('offer_submit'), false);
+  assert.equal(f.peer.closed, true);
+  assert.equal(f.timerCount, 0);
+});
+
+test('gathering completion before the deadline still submits one complete offer', async () => {
+  const snapshot = 'v=0\r\n' + hostCandidate + reflexiveCandidate + 'a=end-of-candidates\r\n';
+  const {f, starting} = await gatheringFixture(snapshot);
+  f.peer.iceGatheringState = 'complete';
+  f.peer.events.get('icegatheringstatechange')();
+  await starting;
+  assert.deepEqual(f.calls.offers, [snapshot]);
+  assert.deepEqual(f.calls.iceCounts, [[true, 1, 1, 0]]);
+  assert.ok(f.calls.diagnostics.includes('ice_gather_complete'));
+  assert.equal(f.calls.diagnostics.includes('ice_gather_partial'), false);
+  assert.equal(f.peer.events.has('icegatheringstatechange'), false);
+  assert.equal(f.timerCount, 1, 'only the media statistics interval remains');
 });
 
 test('stop while offer is pending prevents late bridge and media activity', async () => {

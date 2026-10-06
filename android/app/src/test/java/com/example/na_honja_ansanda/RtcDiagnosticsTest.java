@@ -8,11 +8,13 @@ public class RtcDiagnosticsTest {
     @Test public void diagnosticBridgeAcceptsOnlyFixedStageNames() {
         assertTrue(RtcDiagnostics.allowedJsEvent("page_boot"));
         assertTrue(RtcDiagnostics.allowedJsEvent("ice_gather_timeout"));
+        assertTrue(RtcDiagnostics.allowedJsEvent("ice_gather_partial"));
         assertTrue(RtcDiagnostics.allowedJsEvent("remote_set_failed"));
         assertFalse(RtcDiagnostics.allowedJsEvent("Bearer private-value"));
         assertFalse(RtcDiagnostics.allowedJsEvent("https://example.com/private"));
         assertFalse(RtcDiagnostics.allowedJsEvent("v=0\r\na=candidate:private"));
         assertFalse(RtcDiagnostics.allowedJsEvent("ice_failed\nprivate-value"));
+        assertFalse(RtcDiagnostics.allowedJsEvent("ice_gather_partial\na=candidate:private"));
         assertFalse(RtcDiagnostics.allowedJsEvent(null));
     }
     @Test public void unknownServerStatusCannotLeakIntoLogs() {

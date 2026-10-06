@@ -26,15 +26,23 @@
       if (match) counts[match[1]]++;
     }
     if (!stopped && peer === pc) NativeCamera.iceCandidates(complete, counts.host, counts.srflx, counts.relay);
+    return counts;
   }
   async function waitForIce(peer) {
-    if (peer.iceGatheringState === 'complete') { reportIceCounts(peer, true); return; }
-    await new Promise((resolve, reject) => {
+    if (peer.iceGatheringState === 'complete') { reportIceCounts(peer, true); return true; }
+    return await new Promise((resolve, reject) => {
       let timer;
       const cleanup = () => { clearTimeout(timer); peer.removeEventListener('icegatheringstatechange', changed); };
-      const changed = () => { if (peer.iceGatheringState === 'complete') { cleanup(); reportIceCounts(peer, true); resolve(); } };
+      const changed = () => { if (peer.iceGatheringState === 'complete') { cleanup(); reportIceCounts(peer, true); resolve(true); } };
       peer.addEventListener('icegatheringstatechange', changed);
-      timer = setTimeout(() => { cleanup(); reportIceCounts(peer, false); reject(new Error('gathering timeout')); }, 10000);
+      timer = setTimeout(() => {
+        cleanup();
+        const counts = reportIceCounts(peer, false);
+        // Some interfaces keep gathering after usable direct candidates have arrived.
+        // Submit the current SDP once; later candidates are not signaled separately.
+        if (counts.host + counts.srflx > 0) resolve(false);
+        else reject(new Error('gathering timeout'));
+      }, 10000);
       changed();
     });
   }
@@ -110,9 +118,9 @@
       await peer.setLocalDescription(offer);
       diagnose('local_set_done');
       failureStage = 'ice_gather_timeout'; diagnose('ice_gathering');
-      await waitForIce(peer);
+      const gatheringComplete = await waitForIce(peer);
       if (stopped || peer !== pc) return;
-      diagnose('ice_gather_complete');
+      diagnose(gatheringComplete ? 'ice_gather_complete' : 'ice_gather_partial');
       failureStage = 'offer_submit_failed'; diagnose('offer_submit');
       NativeCamera.offer(peer.localDescription.sdp);
       statsTimer = setInterval(() => inspectStats(peer), 5000);

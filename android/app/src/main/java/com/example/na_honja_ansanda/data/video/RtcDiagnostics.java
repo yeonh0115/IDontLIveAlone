@@ -22,7 +22,7 @@ public final class RtcDiagnostics {
             "page_boot", "page_secure", "page_insecure", "start", "unsupported_rtc", "peer_create", "peer_create_failed",
             "transceiver_add", "transceiver_failed", "offer_create", "offer_create_failed",
             "offer_created", "local_set", "local_set_failed", "local_set_done", "ice_gathering",
-            "ice_gather_timeout", "ice_gather_complete", "offer_submit", "offer_submit_failed",
+            "ice_gather_timeout", "ice_gather_complete", "ice_gather_partial", "offer_submit", "offer_submit_failed",
             "answer_received", "remote_set_failed", "remote_set_done", "track_received",
             "video_play_failed", "video_playing", "ice_new", "ice_checking", "ice_connected",
             "ice_completed", "ice_disconnected", "ice_failed", "ice_closed", "connection_new",
